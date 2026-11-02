@@ -2,7 +2,7 @@ name: plantoday_flutter
 description: "PlanToday - Sales Management"
 publish_to: "none"
 
-version: 1.2.2+42 # Naikkan setiap kali ada update
+version: 1.2.3+43 # Naikkan setiap kali ada update
 
 environment:
     sdk: ^3.12.1

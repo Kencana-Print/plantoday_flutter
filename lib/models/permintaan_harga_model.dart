@@ -160,6 +160,46 @@ class PermintaanHargaDetail {
     return false;
   }
 
+  bool get isFinance {
+    final hdr = kalkulasiDetail?['hdr'];
+    if (hdr is Map) {
+      if (hdr['is_finance'] == true || hdr['source'] == 'tkalkulasi2') {
+        return true;
+      }
+    }
+    final kalNo = (nomorKalkulasi.isNotEmpty
+            ? nomorKalkulasi
+            : (kalkulasiDetail?['hdr']?['kal_nomor']?.toString() ?? ''))
+        .toUpperCase();
+    if (kalNo.startsWith('KAL-') ||
+        (kalNo.startsWith('KAL') && !kalNo.startsWith('KALS'))) {
+      return true;
+    }
+    return false;
+  }
+
+  double get kalRpSistemIncPpn {
+    if (kalRpSistem <= 0) return 0.0;
+    final ppn = kalPpn > 0
+        ? kalPpn
+        : (kalkulasiDetail?['hdr']?['kal_ppn'] as num?)?.toDouble() ?? 0.0;
+    if (ppn > 0) {
+      return (kalRpSistem * (1 + ppn / 100)).roundToDouble();
+    }
+    return kalRpSistem;
+  }
+
+  double get kalRpSalesIncPpn {
+    if (kalRpSales <= 0) return 0.0;
+    final ppn = kalPpn > 0
+        ? kalPpn
+        : (kalkulasiDetail?['hdr']?['kal_ppn'] as num?)?.toDouble() ?? 0.0;
+    if (ppn > 0) {
+      return (kalRpSales * (1 + ppn / 100)).roundToDouble();
+    }
+    return kalRpSales;
+  }
+
   String get kodeKh {
     final fromHdr = kalkulasiDetail?['hdr']?['kal_kh_kode']?.toString().trim();
     if (fromHdr != null && fromHdr.isNotEmpty) {
@@ -354,6 +394,17 @@ class PermintaanHargaDetail {
           result.add({'jenis': 'SABLON', 'ket': 'SABLON', 'biaya': rp});
         }
       }
+
+      // Polyflex
+      final pol = kalkulasiDetail!['polyflex'];
+      if (pol is Map) {
+        final rp = (pol['kald_rppolyflex'] as num?)?.toInt() ?? 0;
+        final cm = (pol['kald_cmpolyflex'] as num?)?.toDouble() ?? 0.0;
+        if (rp > 0) {
+          final label = cm > 0 ? 'POLYFLEX ${cm.toInt()} cm' : 'POLYFLEX';
+          result.add({'jenis': 'POLYFLEX', 'ket': label, 'biaya': rp});
+        }
+      }
     }
 
     // 3. Fallback dari rawJson['garmen_cetak']
@@ -375,9 +426,33 @@ class PermintaanHargaDetail {
 
   factory PermintaanHargaDetail.fromJson(Map<String, dynamic> json) {
     Map<String, dynamic>? kalDetail;
-    if (json['kalkulasi_detail'] is Map<String, dynamic>) {
-      kalDetail = json['kalkulasi_detail'] as Map<String, dynamic>;
+    if (json['kalkulasi_detail'] is Map) {
+      kalDetail = Map<String, dynamic>.from(json['kalkulasi_detail'] as Map);
     }
+
+    final rawKetKal = json['mh_ket_kalkulasi']?.toString() ??
+        json['ket_kalkulasi']?.toString() ??
+        '';
+    final ketKalkulasiVal = rawKetKal.isNotEmpty
+        ? rawKetKal
+        : (kalDetail?['hdr']?['kal_ket']?.toString() ?? '');
+
+    final rawDateKal = json['mh_date_kalkulasi']?.toString() ?? '';
+    final dateKalkulasiVal = rawDateKal.isNotEmpty
+        ? rawDateKal
+        : (kalDetail?['hdr']?['date_modified']?.toString() ??
+            kalDetail?['hdr']?['date_create']?.toString() ??
+            kalDetail?['hdr']?['kal_tanggal']?.toString() ??
+            '');
+
+    final rawUserKal = json['user_kalkulasi']?.toString() ??
+        json['mh_apv_usr']?.toString() ??
+        '';
+    final userKalkulasiVal = rawUserKal.isNotEmpty
+        ? rawUserKal
+        : (kalDetail?['hdr']?['user_create']?.toString() ??
+            kalDetail?['hdr']?['user_modified']?.toString() ??
+            '');
 
     return PermintaanHargaDetail(
       nomor: json['mh_nomor']?.toString() ?? json['nomor']?.toString() ?? '',
@@ -401,10 +476,12 @@ class PermintaanHargaDetail {
       hargaKalkulasi:
           (json['mh_harga_kalkulasi'] as num?)?.toDouble() ??
           (json['harga_kalkulasi'] as num?)?.toDouble() ??
+          (kalDetail?['hdr']?['kal_rpsesuai'] as num?)?.toDouble() ??
           0.0,
       ongkir:
           (json['mh_ongkir'] as num?)?.toDouble() ??
           (json['kald_rpkirim'] as num?)?.toDouble() ??
+          (kalDetail?['dtl']?['kald_rpkirim'] as num?)?.toDouble() ??
           0.0,
       kain: json['mh_kain']?.toString() ?? '',
       panjang: (json['mh_panjang'] as num?)?.toDouble() ?? 0.0,
@@ -453,15 +530,19 @@ class PermintaanHargaDetail {
           : (kalDetail?['hdr']?['kal_nomor']?.toString() ??
                 json['nomor_kalkulasi']?.toString() ??
                 ''),
-      dateKalkulasi: json['mh_date_kalkulasi']?.toString() ?? '',
-      ketKalkulasi: json['mh_ket_kalkulasi']?.toString() ?? '',
-      userKalkulasi:
-          json['user_kalkulasi']?.toString() ??
-          json['mh_apv_usr']?.toString() ??
-          '',
-      kalRpSales: (json['kal_rpsales'] as num?)?.toDouble() ?? 0.0,
-      kalRpSistem: (json['kal_rpsistem'] as num?)?.toDouble() ?? 0.0,
-      kalPpn: (json['kal_ppn'] as num?)?.toDouble() ?? 0.0,
+      dateKalkulasi: dateKalkulasiVal,
+      ketKalkulasi: ketKalkulasiVal,
+      userKalkulasi: userKalkulasiVal,
+      kalRpSales: (json['kal_rpsales'] as num?)?.toDouble() ??
+          (kalDetail?['hdr']?['kal_rpsales'] as num?)?.toDouble() ??
+          0.0,
+      kalRpSistem: (json['kal_rpsistem'] as num?)?.toDouble() ??
+          (kalDetail?['hdr']?['kal_rpsesuai'] as num?)?.toDouble() ??
+          (kalDetail?['hdr']?['kal_rpsistem'] as num?)?.toDouble() ??
+          0.0,
+      kalPpn: (json['kal_ppn'] as num?)?.toDouble() ??
+          (kalDetail?['hdr']?['kal_ppn'] as num?)?.toDouble() ??
+          0.0,
       kalkulasiDetail: kalDetail,
       rawJson: json,
     );

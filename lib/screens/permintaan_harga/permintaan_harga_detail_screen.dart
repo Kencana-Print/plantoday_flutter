@@ -1536,81 +1536,121 @@ class _HasilKalkulasiSectionWidgetState
             .toList() ??
         [];
     final hasKomponen = komponenList.isNotEmpty;
+    final totalKomponen = komponenList.fold<double>(
+      0.0,
+      (sum, k) => sum + ((k['kk_pcs'] as num?)?.toDouble() ?? 0.0),
+    );
 
     final dtl = d.kalkulasiDetail?['dtl'] as Map<String, dynamic>?;
-    final hasDtl =
-        dtl != null && ((dtl['kald_rpjahit'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((dtl?['kald_rppotong'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((dtl?['kald_rpfinishing'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((dtl?['kald_rptenagacetak'] as num?)?.toDouble() ?? 0) > 0;
+    final rpPotong = (dtl?['kald_rppotong'] as num?)?.toDouble() ?? 0.0;
+    final rpJahit = (dtl?['kald_rpjahit'] as num?)?.toDouble() ?? 0.0;
+    final rpFinishing = (dtl?['kald_rpfinishing'] as num?)?.toDouble() ?? 0.0;
+    final rpTenagaCetak =
+        (dtl?['kald_rptenagacetak'] as num?)?.toDouble() ?? 0.0;
+    final rpBiayaObat =
+        (dtl?['kald_rpbiayaobat'] as num?)?.toDouble() ?? 0.0;
+    final rpRaglan = (dtl?['kald_rpraglan'] as num?)?.toDouble() ?? 0.0;
+    final rpRib = (dtl?['kald_rprib'] as num?)?.toDouble() ?? 0.0;
+    final rpKrah = (dtl?['kald_rpkrah'] as num?)?.toDouble() ?? 0.0;
+    final rpManset = (dtl?['kald_rpmanset'] as num?)?.toDouble() ?? 0.0;
+    final totalPengerjaan = rpPotong +
+        rpJahit +
+        rpFinishing +
+        rpTenagaCetak +
+        rpBiayaObat +
+        rpRaglan +
+        rpRib +
+        rpKrah +
+        rpManset;
+    final hasPengerjaan = totalPengerjaan > 0;
 
+    final ctkList =
+        (d.kalkulasiDetail?['ctk_list'] as List<dynamic>?)
+            ?.whereType<Map<String, dynamic>>()
+            .toList() ??
+        [];
     final cetak = d.kalkulasiDetail?['cetak'] as Map<String, dynamic>?;
     final dtf = d.kalkulasiDetail?['dtf'] as Map<String, dynamic>?;
     final bordir = d.kalkulasiDetail?['bordir'] as Map<String, dynamic>?;
     final sublim = d.kalkulasiDetail?['sublim'] as Map<String, dynamic>?;
     final polyflex = d.kalkulasiDetail?['polyflex'] as Map<String, dynamic>?;
-    final hasVariasi =
-        ((cetak?['kald_rpcetak'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((dtf?['kald_rpdtf'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((bordir?['kald_rpbordir'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((sublim?['kald_rpsublim'] as num?)?.toDouble() ?? 0) > 0 ||
-        ((polyflex?['kald_rppolyflex'] as num?)?.toDouble() ?? 0) > 0;
+
+    final rpSablon = (cetak?['kald_rpcetak'] as num?)?.toDouble() ?? 0.0;
+    final rpDtf = (dtf?['kald_rpdtf'] as num?)?.toDouble() ?? 0.0;
+    final cmDtf = (dtf?['kald_cmdtf'] as num?)?.toDouble() ?? 0.0;
+    final rpBordir = (bordir?['kald_rpbordir'] as num?)?.toDouble() ?? 0.0;
+    final cmBordir = (bordir?['kald_cmbordir'] as num?)?.toDouble() ?? 0.0;
+    final rpSublim = (sublim?['kald_rpsublim'] as num?)?.toDouble() ?? 0.0;
+    final rpPolyflex =
+        (polyflex?['kald_rppolyflex'] as num?)?.toDouble() ?? 0.0;
+    final cmPolyflex =
+        (polyflex?['kald_cmpolyflex'] as num?)?.toDouble() ?? 0.0;
+
+    final totalCtkList = ctkList.fold<double>(
+      0.0,
+      (sum, c) => sum + ((c['kc_biaya'] as num?)?.toDouble() ?? 0.0),
+    );
+    final totalVariasiSub =
+        rpSablon + rpDtf + rpBordir + rpSublim + rpPolyflex;
+    final totalVariasi = totalCtkList > 0 ? totalCtkList : totalVariasiSub;
+    final hasVariasi = totalVariasi > 0;
 
     final aksesorisList =
         (d.kalkulasiDetail?['aksesories'] as List<dynamic>?)
             ?.whereType<Map<String, dynamic>>()
             .toList() ??
         [];
-    final hasAksesoris = aksesorisList.isNotEmpty;
-
-    final hdr = d.kalkulasiDetail?['hdr'] as Map<String, dynamic>?;
-    final hasHdrDetails =
-        hdr != null &&
-        (((hdr['kal_rpallowance'] as num?)?.toDouble() ?? 0) > 0 ||
-            ((hdr['kal_rplaba'] as num?)?.toDouble() ?? 0) > 0 ||
-            ((hdr['kal_rpsistem'] as num?)?.toDouble() ?? 0) > 0 ||
-            ((hdr['kal_rpsales'] as num?)?.toDouble() ?? 0) > 0 ||
-            ((hdr['kal_rpsesuai'] as num?)?.toDouble() ?? 0) > 0);
-
-    final totalCetak =
-        ((cetak?['kald_rpcetak'] as num?)?.toDouble() ?? 0) +
-        ((dtf?['kald_rpdtf'] as num?)?.toDouble() ?? 0) +
-        ((bordir?['kald_rpbordir'] as num?)?.toDouble() ?? 0) +
-        ((sublim?['kald_rpsublim'] as num?)?.toDouble() ?? 0) +
-        ((polyflex?['kald_rppolyflex'] as num?)?.toDouble() ?? 0);
-
     final totalAksesoris = aksesorisList.fold<double>(
       0.0,
       (sum, a) => sum + ((a['ka_biaya'] as num?)?.toDouble() ?? 0.0),
     );
+    final hasAksesoris = aksesorisList.isNotEmpty || totalAksesoris > 0;
+
+    final dtlKirim = (dtl?['kald_rpkirim'] as num?)?.toDouble() ?? 0.0;
+    final hasKirimDetail = dtlKirim > 0 || ongkirInfo.hasOngkir;
+
+    final hdr = d.kalkulasiDetail?['hdr'] as Map<String, dynamic>?;
+    final rpAllowance = (hdr?['kal_rpallowance'] as num?)?.toDouble() ?? 0.0;
+    final pctAllowance = (hdr?['kal_allowance'] as num?)?.toDouble() ?? 0.0;
+    final rpLaba = (hdr?['kal_rplaba'] as num?)?.toDouble() ?? 0.0;
+    final pctLaba = (hdr?['kal_laba'] as num?)?.toDouble() ?? 0.0;
+    final rpSesuai = (hdr?['kal_rpsesuai'] as num?)?.toDouble() ?? 0.0;
+    final rpSesuaiPpn = (hdr?['kal_rpsesuaippn'] as num?)?.toDouble() ?? 0.0;
+    final ketBeli = hdr?['kal_ketbeli']?.toString().trim() ?? '';
+
+    final hasHdrDetails =
+        hdr != null &&
+        (rpAllowance > 0 ||
+            rpLaba > 0 ||
+            ((hdr['kal_rpsistem'] as num?)?.toDouble() ?? 0) > 0 ||
+            ((hdr['kal_rpsales'] as num?)?.toDouble() ?? 0) > 0 ||
+            rpSesuai > 0);
 
     double hargaBahanUp = 0.0;
     if (rawSistemKal > 0) {
-      final sisa = rawSistemKal - totalCetak - totalAksesoris;
+      final sisa = rawSistemKal -
+          totalVariasi -
+          totalAksesoris -
+          totalPengerjaan -
+          dtlKirim;
       if (sisa > 0) {
         hargaBahanUp = sisa;
       }
     }
     if (hargaBahanUp <= 0 && hasKomponen) {
-      final totalKomp = komponenList.fold<double>(
-        0.0,
-        (sum, k) => sum + ((k['kk_pcs'] as num?)?.toDouble() ?? 0.0),
-      );
-      final allowRp = ((hdr?['kal_rpallowance'] as num?)?.toDouble() ?? 0.0);
-      final labaRp = ((hdr?['kal_rplaba'] as num?)?.toDouble() ?? 0.0);
-      final jahitRp =
-          ((dtl?['kald_rpjahit'] as num?)?.toDouble() ?? 0.0) +
-          ((dtl?['kald_rppotong'] as num?)?.toDouble() ?? 0.0) +
-          ((dtl?['kald_rpfinishing'] as num?)?.toDouble() ?? 0.0) +
-          ((dtl?['kald_rptenagacetak'] as num?)?.toDouble() ?? 0.0);
-      final totalEst = totalKomp + allowRp + labaRp + jahitRp;
-      hargaBahanUp = totalEst > 0 ? totalEst : totalKomp;
+      hargaBahanUp = totalKomponen;
     }
     if (hargaBahanUp <= 0) {
       hargaBahanUp = calcPrice > 0
           ? calcPrice
           : (d.hargaKalkulasi > 0 ? d.hargaKalkulasi : d.harga);
     }
+
+    final totalHppEstimasi = (hasKomponen ? totalKomponen : hargaBahanUp) +
+        totalPengerjaan +
+        totalVariasi +
+        totalAksesoris +
+        dtlKirim;
 
     final namaKain = d.kain.isNotEmpty
         ? d.kain
@@ -1625,9 +1665,10 @@ class _HasilKalkulasiSectionWidgetState
 
     final hasAnyBreakdown =
         (hasKomponen || hargaBahanUp > 0) ||
-        hasDtl ||
+        hasPengerjaan ||
         hasVariasi ||
         hasAksesoris ||
+        hasKirimDetail ||
         hasHdrDetails;
 
     return Container(
@@ -1925,204 +1966,396 @@ class _HasilKalkulasiSectionWidgetState
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Sub 1: Harga Bahan (Otomatis Sistem)
-                    if (hasKomponen || hargaBahanUp > 0) ...[
-                      const Text(
-                        '1. HARGA BAHAN (Otomatis Sistem)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFF1F5F9)),
-                        ),
-                        child: Column(
-                          children: [
-                            _buildBreakdownRow(
-                              namaKain.isNotEmpty && namaKain != '-'
-                                  ? (namaWarna.isNotEmpty
-                                        ? '$namaKain ($namaWarna)'
-                                        : namaKain)
-                                  : (d.nama.isNotEmpty ? d.nama : 'Bahan Kain'),
-                              'Rp ${_formatNumber(hargaBahanUp)}',
+                child: Builder(
+                  builder: (context) {
+                    int secNum = 1;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Sub: Bahan Kain
+                        if (hasKomponen || hargaBahanUp > 0) ...[
+                          Text(
+                            '${secNum++}. ${hasKomponen ? 'KOMPONEN BAHAN KAIN' : 'HARGA BAHAN'} (${isFinance ? 'Finance' : 'Sistem'})',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
                             ),
-                            const SizedBox(height: 4),
-                            const Divider(
-                              height: 6,
-                              thickness: 0.5,
-                              color: Color(0xFFE2E8F0),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
                             ),
-                            const SizedBox(height: 2),
-                            _buildBreakdownRow(
-                              'Keterangan Ongkir',
-                              ongkirInfo.hasOngkir
-                                  ? (ongkirInfo.isFreeOngkir
-                                      ? 'Sudah include ongkir (Bebas Ongkir Rp 0)'
-                                      : (ongkirInfo.ongkirPerPcs > 0
-                                          ? 'Sudah include ongkir (+Rp ${_formatNumber(ongkirInfo.ongkirPerPcs)}/pcs${ongkirInfo.alokasi.isNotEmpty ? " ke ${ongkirInfo.alokasi}" : ""})'
-                                          : 'Sudah include ongkir${ongkirInfo.alokasi.isNotEmpty ? " (${ongkirInfo.alokasi})" : ""}'))
-                                  : 'Belum include ongkir (Exclude Ongkir)',
-                              valueColor: ongkirInfo.hasOngkir
-                                  ? (ongkirInfo.isFreeOngkir
-                                      ? const Color(0xFF15803D)
-                                      : const Color(0xFF0284C7))
-                                  : const Color(0xFFDC2626),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                            child: Column(
+                              children: [
+                                if (hasKomponen) ...[
+                                  ...komponenList.map((k) {
+                                    final komp = k['kk_komponen']?.toString().trim() ?? 'BAHAN';
+                                    final kain = k['kk_jeniskain']?.toString().trim() ?? '';
+                                    final warna = k['kk_warna']?.toString().trim() ?? '';
+                                    final label = '[$komp] $kain${warna.isNotEmpty ? " ($warna)" : ""}';
 
-                    // Sub 2: Biaya Cetak & Variasi
-                    if (hasVariasi) ...[
-                      const Text(
-                        '2. BIAYA CETAK & VARIASI (Inputan Sales)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFF1F5F9)),
-                        ),
-                        child: Column(
-                          children: [
-                            if (((cetak?['kald_rpcetak'] as num?)?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'Sablon',
-                                'Rp ${_formatNumber(cetak!['kald_rpcetak'])}',
-                              ),
-                            if (((dtf?['kald_rpdtf'] as num?)?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'DTF',
-                                'Rp ${_formatNumber(dtf!['kald_rpdtf'])}',
-                              ),
-                            if (((bordir?['kald_rpbordir'] as num?)
-                                        ?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'Bordir',
-                                'Rp ${_formatNumber(bordir!['kald_rpbordir'])}',
-                              ),
-                            if (((sublim?['kald_rpsublim'] as num?)
-                                        ?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'Sublim',
-                                'Rp ${_formatNumber(sublim!['kald_rpsublim'])}',
-                              ),
-                            if (((polyflex?['kald_rppolyflex'] as num?)
-                                        ?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'Polyflex',
-                                'Rp ${_formatNumber(polyflex!['kald_rppolyflex'])}',
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                                    final hrga = (k['kk_harga'] as num?)?.toDouble() ?? 0.0;
+                                    final isKg = (k['kk_kg']?.toString().toUpperCase() == 'Y');
+                                    final bbrn = (k['kk_babaran'] as num?)?.toDouble() ?? 0.0;
+                                    final pcs = (k['kk_pcs'] as num?)?.toDouble() ?? 0.0;
 
-                    // Sub 3: Aksesoris Tambahan
-                    if (hasAksesoris) ...[
-                      const Text(
-                        '3. AKSESORIS TAMBAHAN (Inputan Sales)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFF1F5F9)),
-                        ),
-                        child: Column(
-                          children: aksesorisList
-                              .map(
-                                (a) => _buildBreakdownRow(
-                                  a['ka_aksesories']?.toString() ?? 'Aksesoris',
-                                  'Rp ${_formatNumber(a['ka_biaya'])}',
+                                    final List<String> subParts = [];
+                                    if (hrga > 0) {
+                                      subParts.add('Rp ${_formatNumber(hrga)}${isKg ? '/kg' : '/m'}');
+                                    }
+                                    if (bbrn > 0) {
+                                      subParts.add('Bbrn: ${_formatNumber(bbrn)} ${isKg ? 'kg' : 'yrd'}');
+                                    }
+                                    final sublabel = subParts.isNotEmpty ? subParts.join(' • ') : null;
+
+                                    return _buildBreakdownRow(
+                                      label,
+                                      'Rp ${_formatNumber(pcs)}/pcs',
+                                      sublabel: sublabel,
+                                    );
+                                  }),
+                                  if (komponenList.length > 1)
+                                    _buildSubtotalRow(
+                                      'Subtotal Bahan Kain',
+                                      'Rp ${_formatNumber(totalKomponen)}',
+                                    ),
+                                ] else ...[
+                                  _buildBreakdownRow(
+                                    namaKain.isNotEmpty && namaKain != '-'
+                                        ? (namaWarna.isNotEmpty
+                                              ? '$namaKain ($namaWarna)'
+                                              : namaKain)
+                                        : (d.nama.isNotEmpty ? d.nama : 'Bahan Kain'),
+                                    'Rp ${_formatNumber(hargaBahanUp)}',
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        // Sub: Biaya Pengerjaan Konveksi
+                        if (hasPengerjaan) ...[
+                          Text(
+                            '${secNum++}. BIAYA PENGERJAAN KONVEKSI (${isFinance ? 'Finance' : 'Sistem'})',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Column(
+                              children: [
+                                if (rpPotong > 0)
+                                  _buildBreakdownRow('Biaya Potong', 'Rp ${_formatNumber(rpPotong)}'),
+                                if (rpJahit > 0)
+                                  _buildBreakdownRow(
+                                    'Biaya Jahit',
+                                    'Rp ${_formatNumber(rpJahit)}',
+                                    sublabel: dtl?['kald_jahit'] != null &&
+                                            dtl!['kald_jahit'].toString().trim().isNotEmpty
+                                        ? dtl['kald_jahit'].toString().trim()
+                                        : null,
+                                  ),
+                                if (rpFinishing > 0)
+                                  _buildBreakdownRow('Biaya Finishing', 'Rp ${_formatNumber(rpFinishing)}'),
+                                if (rpTenagaCetak > 0)
+                                  _buildBreakdownRow('Tenaga Cetak', 'Rp ${_formatNumber(rpTenagaCetak)}'),
+                                if (rpBiayaObat > 0)
+                                  _buildBreakdownRow('Biaya Obat', 'Rp ${_formatNumber(rpBiayaObat)}'),
+                                if (rpRaglan > 0)
+                                  _buildBreakdownRow('Biaya Raglan', 'Rp ${_formatNumber(rpRaglan)}'),
+                                if (rpRib > 0)
+                                  _buildBreakdownRow('Biaya Rib', 'Rp ${_formatNumber(rpRib)}'),
+                                if (rpKrah > 0)
+                                  _buildBreakdownRow('Biaya Krah', 'Rp ${_formatNumber(rpKrah)}'),
+                                if (rpManset > 0)
+                                  _buildBreakdownRow('Biaya Manset', 'Rp ${_formatNumber(rpManset)}'),
+                                _buildSubtotalRow(
+                                  'Subtotal Pengerjaan',
+                                  'Rp ${_formatNumber(totalPengerjaan)}',
                                 ),
-                              )
-                              .toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
 
-                    // Sub 4: Ringkasan Kalkulasi
-                    if (hasHdrDetails) ...[
-                      Text(
-                        isFinance
-                            ? '4. RINGKASAN KALKULASI (Finance Fix)'
-                            : '4. RINGKASAN KALKULASI (Otomatis Sistem)',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFF1F5F9)),
-                        ),
-                        child: Column(
-                          children: [
-                            if (((hdr['kal_rpsistem'] as num?)?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                isFinance
-                                    ? 'Kalkulasi Finance (Exc PPN)'
-                                    : 'Kalkulasi Sistem (Exc PPN)',
-                                'Rp ${_formatNumber(hdr['kal_rpsistem'])}',
-                              ),
-                            if (((hdr['kal_rpsales'] as num?)?.toDouble() ??
-                                    0) >
-                                0)
-                              _buildBreakdownRow(
-                                'Pengajuan Sales (Exc PPN)',
-                                'Rp ${_formatNumber(hdr['kal_rpsales'])}',
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
+                        // Sub: Biaya Cetak & Variasi
+                        if (hasVariasi) ...[
+                          Text(
+                            '${secNum++}. BIAYA CETAK & VARIASI',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Column(
+                              children: [
+                                if (ctkList.isNotEmpty) ...[
+                                  ...ctkList.map(
+                                    (c) => _buildBreakdownRow(
+                                      c['kc_ket']?.toString() ?? 'Variasi Cetak',
+                                      'Rp ${_formatNumber(c['kc_biaya'])}',
+                                    ),
+                                  ),
+                                ] else ...[
+                                  if (rpSablon > 0)
+                                    _buildBreakdownRow('Sablon', 'Rp ${_formatNumber(rpSablon)}'),
+                                  if (rpDtf > 0)
+                                    _buildBreakdownRow(
+                                      'DTF',
+                                      'Rp ${_formatNumber(rpDtf)}',
+                                      sublabel: cmDtf > 0 ? 'Ukuran: ${cmDtf.toInt()} cm' : null,
+                                    ),
+                                  if (rpBordir > 0)
+                                    _buildBreakdownRow(
+                                      'Bordir',
+                                      'Rp ${_formatNumber(rpBordir)}',
+                                      sublabel: cmBordir > 0 ? 'Ukuran: ${cmBordir.toInt()} cm' : null,
+                                    ),
+                                  if (rpSublim > 0)
+                                    _buildBreakdownRow('Sublim', 'Rp ${_formatNumber(rpSublim)}'),
+                                  if (rpPolyflex > 0)
+                                    _buildBreakdownRow(
+                                      'Polyflex',
+                                      'Rp ${_formatNumber(rpPolyflex)}',
+                                      sublabel: cmPolyflex > 0 ? 'Ukuran: ${cmPolyflex.toInt()} cm' : null,
+                                    ),
+                                ],
+                                _buildSubtotalRow(
+                                  'Subtotal Variasi',
+                                  'Rp ${_formatNumber(totalVariasi)}',
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        // Sub: Aksesoris Tambahan
+                        if (hasAksesoris) ...[
+                          Text(
+                            '${secNum++}. AKSESORIS TAMBAHAN',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Column(
+                              children: [
+                                ...aksesorisList.map(
+                                  (a) => _buildBreakdownRow(
+                                    a['ka_aksesories']?.toString() ?? 'Aksesoris',
+                                    'Rp ${_formatNumber(a['ka_biaya'])}',
+                                  ),
+                                ),
+                                if (aksesorisList.length > 1)
+                                  _buildSubtotalRow(
+                                    'Subtotal Aksesoris',
+                                    'Rp ${_formatNumber(totalAksesoris)}',
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        // Sub: Biaya Pengiriman
+                        if (hasKirimDetail) ...[
+                          Text(
+                            '${secNum++}. BIAYA PENGIRIMAN',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Column(
+                              children: [
+                                if (dtlKirim > 0)
+                                  _buildBreakdownRow(
+                                    'Biaya Kirim Kalkulasi',
+                                    'Rp ${_formatNumber(dtlKirim)}/pcs',
+                                  ),
+                                _buildBreakdownRow(
+                                  'Status Ongkir',
+                                  ongkirInfo.hasOngkir
+                                      ? (ongkirInfo.isFreeOngkir
+                                          ? 'Sudah include ongkir (Bebas Ongkir Rp 0)'
+                                          : (ongkirInfo.ongkirPerPcs > 0
+                                              ? 'Sudah include ongkir (+Rp ${_formatNumber(ongkirInfo.ongkirPerPcs)}/pcs${ongkirInfo.alokasi.isNotEmpty ? " ke ${ongkirInfo.alokasi}" : ""})'
+                                              : 'Sudah include ongkir${ongkirInfo.alokasi.isNotEmpty ? " (${ongkirInfo.alokasi})" : ""}'))
+                                      : 'Belum include ongkir (Exclude Ongkir)',
+                                  valueColor: ongkirInfo.hasOngkir
+                                      ? (ongkirInfo.isFreeOngkir
+                                          ? const Color(0xFF15803D)
+                                          : const Color(0xFF0284C7))
+                                      : const Color(0xFFDC2626),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        // Sub: Ringkasan Kalkulasi
+                        if (hasHdrDetails) ...[
+                          Text(
+                            '${secNum++}. RINGKASAN KALKULASI (${isFinance ? 'Finance Fix' : 'Otomatis Sistem'})',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFF1F5F9)),
+                            ),
+                            child: Column(
+                              children: [
+                                if (isFinance) ...[
+                                  if (totalHppEstimasi > 0)
+                                    _buildBreakdownRow(
+                                      'Total HPP (Biaya Dasar)',
+                                      'Rp ${_formatNumber(totalHppEstimasi)}',
+                                    ),
+                                  if (rpAllowance > 0)
+                                    _buildBreakdownRow(
+                                      'Allowance (${pctAllowance.toStringAsFixed(1)}%)',
+                                      '+Rp ${_formatNumber(rpAllowance)}',
+                                      valueColor: const Color(0xFF64748B),
+                                    ),
+                                  if (rpLaba > 0)
+                                    _buildBreakdownRow(
+                                      'Margin Laba (${pctLaba.toStringAsFixed(1)}%)',
+                                      '+Rp ${_formatNumber(rpLaba)}',
+                                      valueColor: const Color(0xFF0284C7),
+                                    ),
+                                  if (rpSesuai > 0) ...[
+                                    const SizedBox(height: 2),
+                                    const Divider(height: 6, thickness: 0.6, color: Color(0xFFCBD5E1)),
+                                    const SizedBox(height: 2),
+                                    _buildBreakdownRow(
+                                      'Harga Sesuai Finance (Exc PPN)',
+                                      'Rp ${_formatNumber(rpSesuai)}',
+                                      valueColor: const Color(0xFF15803D),
+                                    ),
+                                  ],
+                                  if (rpSesuaiPpn > 0 && rpSesuaiPpn != rpSesuai)
+                                    _buildBreakdownRow(
+                                      'Harga Sesuai Finance (Inc PPN)',
+                                      'Rp ${_formatNumber(rpSesuaiPpn)}',
+                                      valueColor: const Color(0xFF15803D),
+                                    ),
+                                  if (ketBeli.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Catatan Pembelian Finance:',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF475569),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            ketBeli,
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF1E293B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ] else ...[
+                                  if (((hdr['kal_rpsistem'] as num?)?.toDouble() ?? 0) > 0)
+                                    _buildBreakdownRow(
+                                      'Kalkulasi Sistem (Exc PPN)',
+                                      'Rp ${_formatNumber(hdr['kal_rpsistem'])}',
+                                    ),
+                                  if (((hdr['kal_rpsales'] as num?)?.toDouble() ?? 0) > 0)
+                                    _buildBreakdownRow(
+                                      'Pengajuan Sales (Exc PPN)',
+                                      'Rp ${_formatNumber(hdr['kal_rpsales'])}',
+                                    ),
+                                  if (d.kalRpSistemIncPpn > 0 && d.kalRpSistemIncPpn != (hdr['kal_rpsistem'] ?? 0))
+                                    _buildBreakdownRow(
+                                      'Kalkulasi Sistem (Inc PPN)',
+                                      'Rp ${_formatNumber(d.kalRpSistemIncPpn)}',
+                                    ),
+                                  if (d.kalRpSalesIncPpn > 0 && d.kalRpSalesIncPpn != (hdr['kal_rpsales'] ?? 0))
+                                    _buildBreakdownRow(
+                                      'Pengajuan Sales (Inc PPN)',
+                                      'Rp ${_formatNumber(d.kalRpSalesIncPpn)}',
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -2210,28 +2443,65 @@ class _HasilKalkulasiSectionWidgetState
     );
   }
 
+  Widget _buildSubtotalRow(String label, String value) {
+    return Column(
+      children: [
+        const SizedBox(height: 3),
+        const Divider(height: 6, thickness: 0.6, color: Color(0xFFCBD5E1)),
+        const SizedBox(height: 2),
+        _buildBreakdownRow(
+          label,
+          value,
+          valueColor: const Color(0xFF0F172A),
+          isBold: true,
+        ),
+      ],
+    );
+  }
+
   Widget _buildBreakdownRow(
     String label,
     String value, {
+    String? sublabel,
     Color? valueColor,
     bool isBold = true,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Flexible(
-            flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                if (sublabel != null && sublabel.isNotEmpty) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    sublabel,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 8),
           Flexible(
-            flex: 3,
+            flex: 2,
             child: Text(
               value,
               textAlign: TextAlign.right,
