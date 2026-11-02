@@ -80,7 +80,19 @@ String _formatNumber(dynamic n) {
   if (n == null) return '-';
   final num = double.tryParse(n.toString());
   if (num == null) return n.toString();
-  return NumberFormat.decimalPattern('id_ID').format(num);
+  return NumberFormat('#,##0', 'id_ID').format(num.round());
+}
+
+String _formatDecimal(dynamic n, [int maxDigits = 2]) {
+  if (n == null) return '-';
+  final num = double.tryParse(n.toString());
+  if (num == null) return n.toString();
+  if (num == num.roundToDouble()) {
+    return NumberFormat('#,##0', 'id_ID').format(num.round());
+  }
+  final fmt = NumberFormat.decimalPattern('id_ID')
+    ..maximumFractionDigits = maxDigits;
+  return fmt.format(num);
 }
 
 class OngkirExtractionResult {
@@ -944,7 +956,7 @@ class _PermintaanHargaDetailScreenState
                                     _CompactCell(
                                       label: 'Ukuran (p x l)',
                                       value:
-                                          '${_formatNumber(_detail!.panjang)} m x ${_formatNumber(_detail!.lebar)} ${_detail!.divisi == '1' ? 'cm' : 'm'}',
+                                          '${_formatDecimal(_detail!.panjang)} m x ${_formatDecimal(_detail!.lebar)} ${_detail!.divisi == '1' ? 'cm' : 'm'}',
                                     ),
                                     const SizedBox(width: 10),
                                     _CompactCell(
@@ -2009,7 +2021,7 @@ class _HasilKalkulasiSectionWidgetState
                                       subParts.add('Rp ${_formatNumber(hrga)}${isKg ? '/kg' : '/m'}');
                                     }
                                     if (bbrn > 0) {
-                                      subParts.add('Bbrn: ${_formatNumber(bbrn)} ${isKg ? 'kg' : 'yrd'}');
+                                      subParts.add('Bbrn: ${_formatDecimal(bbrn)} ${isKg ? 'kg' : 'yrd'}');
                                     }
                                     final sublabel = subParts.isNotEmpty ? subParts.join(' • ') : null;
 
