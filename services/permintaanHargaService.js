@@ -1487,8 +1487,9 @@ const getPermintaanHargaList = async ({
                 m.mh_harga_kalkulasi, 
                 0
             ) AS harga_kalkulasi,
+            COALESCE(NULLIF(m.mh_nomor_kalkulasi, ''), NULLIF(k2.kal_nomor, ''), NULLIF(k.kal_nomor, ''), '') AS nomor_kalkulasi,
             COALESCE(m.mh_status,'') AS status,
-            COALESCE(m.mh_ket_kalkulasi,'') AS ket_kalkulasi,
+            COALESCE(NULLIF(k2.kal_ket, ''), m.mh_ket_kalkulasi, '') AS ket_kalkulasi,
             COALESCE(m.user_create,'') AS user_create
         FROM tmintaharga m
         LEFT JOIN tdivisi v ON v.kode = m.mh_divisi
@@ -1651,8 +1652,17 @@ const getPermintaanHargaDetail = async ({
                 row.kal_ppn > 0
                     ? Math.round(row.kal_rpsales * (1 + row.kal_ppn / 100))
                     : row.kal_rpsales;
-            if (!row.user_kalkulasi && hdr.user_create) {
-                row.user_kalkulasi = hdr.user_create;
+            if (!row.mh_harga_kalkulasi || Number(row.mh_harga_kalkulasi) <= 0) {
+                row.mh_harga_kalkulasi = row.kal_rpsistem;
+            }
+            if (!row.mh_ket_kalkulasi && hdr.kal_ket) {
+                row.mh_ket_kalkulasi = hdr.kal_ket;
+            }
+            if (!row.mh_date_kalkulasi && (hdr.date_modified || hdr.date_create || hdr.kal_tanggal)) {
+                row.mh_date_kalkulasi = hdr.date_modified || hdr.date_create || hdr.kal_tanggal;
+            }
+            if (!row.user_kalkulasi && (hdr.user_create || hdr.user_modified)) {
+                row.user_kalkulasi = hdr.user_create || hdr.user_modified;
             }
         } else {
             row.kal_rpsales = Number(hdr.kal_rpsales) || 0;
@@ -1665,6 +1675,15 @@ const getPermintaanHargaDetail = async ({
                 row.kal_ppn > 0
                     ? Math.round(row.kal_rpsales * (1 + row.kal_ppn / 100))
                     : row.kal_rpsales;
+            if (!row.mh_harga_kalkulasi || Number(row.mh_harga_kalkulasi) <= 0) {
+                row.mh_harga_kalkulasi = row.kal_rpsistem;
+            }
+            if (!row.mh_ket_kalkulasi && hdr.kal_ket) {
+                row.mh_ket_kalkulasi = hdr.kal_ket;
+            }
+            if (!row.mh_date_kalkulasi && (hdr.date_create || hdr.kal_tanggal)) {
+                row.mh_date_kalkulasi = hdr.date_create || hdr.kal_tanggal;
+            }
         }
 
         let dtl = null;
@@ -1784,7 +1803,9 @@ const getPermintaanHargaDetail = async ({
                 kal_ket: hdr.kal_ket,
                 kal_ketbeli: hdr.kal_ketbeli,
                 user_create: hdr.user_create,
+                user_modified: hdr.user_modified || null,
                 date_create: hdr.date_create,
+                date_modified: hdr.date_modified || null,
             },
             dtl: dtl
                 ? {
