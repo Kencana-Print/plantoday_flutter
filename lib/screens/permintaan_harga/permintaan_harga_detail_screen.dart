@@ -1461,13 +1461,16 @@ class _HasilKalkulasiSectionWidgetState
 
     final parsed = parseKetKalkulasi(d.ketKalkulasi);
     final ongkirInfo = extractOngkirInfo(d);
+    final isFinance = d.kalkulasiDetail?['hdr']?['is_finance'] == true ||
+        (d.nomorKalkulasi.startsWith('KAL-') &&
+            !d.nomorKalkulasi.startsWith('KALS-'));
     final cardBadgeCode = d.nomorKalkulasi.isNotEmpty
-        ? d.nomorKalkulasi
-        : (isNego ? 'KALS' : 'KAL');
+        ? (isFinance ? '${d.nomorKalkulasi} (Finance)' : d.nomorKalkulasi)
+        : (isNego ? 'KALS' : (isFinance ? 'KAL (Finance)' : 'KAL'));
     final userText = isNego
         ? (d.salesNama.isNotEmpty ? d.salesNama : d.userCreate)
         : (d.userKalkulasi.isNotEmpty
-              ? d.userKalkulasi
+              ? (isFinance ? '${d.userKalkulasi} (Finance)' : d.userKalkulasi)
               : (d.userCreate.isNotEmpty ? d.userCreate : '-'));
 
     final rawSistemKal = d.kalRpSistem > 0
@@ -1566,7 +1569,8 @@ class _HasilKalkulasiSectionWidgetState
         (((hdr['kal_rpallowance'] as num?)?.toDouble() ?? 0) > 0 ||
             ((hdr['kal_rplaba'] as num?)?.toDouble() ?? 0) > 0 ||
             ((hdr['kal_rpsistem'] as num?)?.toDouble() ?? 0) > 0 ||
-            ((hdr['kal_rpsales'] as num?)?.toDouble() ?? 0) > 0);
+            ((hdr['kal_rpsales'] as num?)?.toDouble() ?? 0) > 0 ||
+            ((hdr['kal_rpsesuai'] as num?)?.toDouble() ?? 0) > 0);
 
     final totalCetak =
         ((cetak?['kald_rpcetak'] as num?)?.toDouble() ?? 0) +
@@ -2076,11 +2080,13 @@ class _HasilKalkulasiSectionWidgetState
                       const SizedBox(height: 8),
                     ],
 
-                    // Sub 4: Ringkasan Kalkulasi Sistem
+                    // Sub 4: Ringkasan Kalkulasi
                     if (hasHdrDetails) ...[
-                      const Text(
-                        '4. RINGKASAN KALKULASI (Otomatis Sistem)',
-                        style: TextStyle(
+                      Text(
+                        isFinance
+                            ? '4. RINGKASAN KALKULASI (Finance Fix)'
+                            : '4. RINGKASAN KALKULASI (Otomatis Sistem)',
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF334155),
@@ -2096,24 +2102,13 @@ class _HasilKalkulasiSectionWidgetState
                         ),
                         child: Column(
                           children: [
-                            // if (((hdr['kal_rpallowance'] as num?)?.toDouble() ??
-                            //         0) >
-                            //     0)
-                            //   _buildBreakdownRow(
-                            //     'Allowance (${hdr['kal_allowance']}%)',
-                            //     '+Rp ${_formatNumber(hdr['kal_rpallowance'])}',
-                            //   ),
-                            // if (((hdr['kal_rplaba'] as num?)?.toDouble() ?? 0) >
-                            //     0)
-                            //   _buildBreakdownRow(
-                            //     'Margin Laba (${hdr['kal_laba']}%)',
-                            //     '+Rp ${_formatNumber(hdr['kal_rplaba'])}',
-                            //   ),
                             if (((hdr['kal_rpsistem'] as num?)?.toDouble() ??
                                     0) >
                                 0)
                               _buildBreakdownRow(
-                                'Kalkulasi Sistem (Exc PPN)',
+                                isFinance
+                                    ? 'Kalkulasi Finance (Exc PPN)'
+                                    : 'Kalkulasi Sistem (Exc PPN)',
                                 'Rp ${_formatNumber(hdr['kal_rpsistem'])}',
                               ),
                             if (((hdr['kal_rpsales'] as num?)?.toDouble() ??
