@@ -1477,6 +1477,9 @@ const getPermintaanHargaList = async ({
             ) AS harga,
             COALESCE(
                 CASE 
+                    WHEN k2.kal_rpsesuaippn > 0 THEN ROUND(k2.kal_rpsesuaippn)
+                    WHEN k2.kal_rpsesuai > 0 THEN 
+                        IF(k2.kal_ppn > 0, ROUND(k2.kal_rpsesuai * (1 + k2.kal_ppn / 100)), ROUND(k2.kal_rpsesuai))
                     WHEN k.kal_rpsistem > 0 THEN 
                         IF(k.kal_ppn > 0, ROUND(k.kal_rpsistem * (1 + k.kal_ppn / 100)), ROUND(k.kal_rpsistem))
                     ELSE NULL
@@ -1490,6 +1493,7 @@ const getPermintaanHargaList = async ({
         FROM tmintaharga m
         LEFT JOIN tdivisi v ON v.kode = m.mh_divisi
         LEFT JOIN kalkulasi.tkalkulasi_hdr k ON k.kal_mh_nomor = m.mh_nomor
+        LEFT JOIN kalkulasi.tkalkulasi2_hdr k2 ON k2.kal_nomor = m.mh_nomor_kalkulasi
         WHERE ${where.join(" AND ")}
         ORDER BY m.mh_nomor DESC
         LIMIT ? OFFSET ?
@@ -1583,8 +1587,24 @@ const getPermintaanHargaDetail = async ({
 
     let kalNomor = row.mh_nomor_kalkulasi;
     let hdr = null;
+    let isFinance = false;
 
+    // 1. Prioritaskan cek ke tkalkulasi2_hdr (Finance Fix) jika ada mh_nomor_kalkulasi
     if (kalNomor) {
+        try {
+            const [hdr2Rows] = await db.query(
+                `SELECT * FROM kalkulasi.tkalkulasi2_hdr WHERE kal_nomor = ? LIMIT 1`,
+                [kalNomor],
+            );
+            if (hdr2Rows?.[0]) {
+                hdr = hdr2Rows[0];
+                isFinance = true;
+            }
+        } catch (hdr2Err) {}
+    }
+
+    // 2. Jika tidak ada di tkalkulasi2_hdr, cek tkalkulasi_hdr (Sales/Sistem)
+    if (!hdr && kalNomor) {
         try {
             const [hdrRows] = await db.query(
                 `SELECT * FROM kalkulasi.tkalkulasi_hdr WHERE kal_nomor = ? LIMIT 1`,
@@ -1594,6 +1614,7 @@ const getPermintaanHargaDetail = async ({
         } catch (hdrErr) {}
     }
 
+    // 3. Fallback jika kalNomor belum tercatat di tmintaharga, cari berdasarkan kal_mh_nomor di tkalkulasi_hdr
     if (!hdr && row.mh_nomor) {
         try {
             const [hdrRows] = await db.query(
@@ -1611,21 +1632,40 @@ const getPermintaanHargaDetail = async ({
     }
 
     if (hdr && kalNomor) {
+        const tablePrefix = isFinance ? 'kalkulasi.tkalkulasi2_' : 'kalkulasi.tkalkulasi_';
+
         row.kal_ppn = Number(hdr.kal_ppn) || 0;
         row.kal_rpsesuai = Number(hdr.kal_rpsesuai) || 0;
         row.kal_rpsesuaippn = Number(hdr.kal_rpsesuaippn) || 0;
-        row.kal_rpsales = Number(hdr.kal_rpsales) || 0;
-        row.kal_rpsistem = Number(hdr.kal_rpsistem) || 0;
 
-        // Hitung nilai Include PPN jika kal_ppn > 0
-        row.kal_rpsistem_inc_ppn =
-            row.kal_ppn > 0
-                ? Math.round(row.kal_rpsistem * (1 + row.kal_ppn / 100))
-                : row.kal_rpsistem;
-        row.kal_rpsales_inc_ppn =
-            row.kal_ppn > 0
-                ? Math.round(row.kal_rpsales * (1 + row.kal_ppn / 100))
-                : row.kal_rpsales;
+        if (isFinance) {
+            // Pada tkalkulasi2 (Finance), nominal fix sistem adalah kal_rpsesuai
+            row.kal_rpsistem = Number(hdr.kal_rpsesuai) || 0;
+            row.kal_rpsistem_inc_ppn =
+                Number(hdr.kal_rpsesuaippn) ||
+                (row.kal_ppn > 0
+                    ? Math.round(row.kal_rpsistem * (1 + row.kal_ppn / 100))
+                    : row.kal_rpsistem);
+            row.kal_rpsales = Number(row.mh_harga) || 0;
+            row.kal_rpsales_inc_ppn =
+                row.kal_ppn > 0
+                    ? Math.round(row.kal_rpsales * (1 + row.kal_ppn / 100))
+                    : row.kal_rpsales;
+            if (!row.user_kalkulasi && hdr.user_create) {
+                row.user_kalkulasi = hdr.user_create;
+            }
+        } else {
+            row.kal_rpsales = Number(hdr.kal_rpsales) || 0;
+            row.kal_rpsistem = Number(hdr.kal_rpsistem) || 0;
+            row.kal_rpsistem_inc_ppn =
+                row.kal_ppn > 0
+                    ? Math.round(row.kal_rpsistem * (1 + row.kal_ppn / 100))
+                    : row.kal_rpsistem;
+            row.kal_rpsales_inc_ppn =
+                row.kal_ppn > 0
+                    ? Math.round(row.kal_rpsales * (1 + row.kal_ppn / 100))
+                    : row.kal_rpsales;
+        }
 
         let dtl = null;
         let komponenRows = [];
@@ -1638,7 +1678,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [dtlRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_dtl WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}dtl WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             dtl = dtlRows?.[0] || null;
@@ -1646,7 +1686,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [kRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_komponen WHERE kk_nomor = ? ORDER BY kk_nourut ASC`,
+                `SELECT * FROM ${tablePrefix}komponen WHERE kk_nomor = ? ORDER BY kk_nourut ASC`,
                 [kalNomor],
             );
             komponenRows = kRows || [];
@@ -1654,7 +1694,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [aRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_aksesories WHERE ka_nomor = ? ORDER BY ka_nourut ASC`,
+                `SELECT * FROM ${tablePrefix}aksesories WHERE ka_nomor = ? ORDER BY ka_nourut ASC`,
                 [kalNomor],
             );
             aksesoriesRows = aRows || [];
@@ -1663,7 +1703,7 @@ const getPermintaanHargaDetail = async ({
         let ctkRows = [];
         try {
             const [cRowsGrid] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_ctk WHERE kc_nomor = ? ORDER BY kc_nourut ASC`,
+                `SELECT * FROM ${tablePrefix}ctk WHERE kc_nomor = ? ORDER BY kc_nourut ASC`,
                 [kalNomor],
             );
             ctkRows = cRowsGrid || [];
@@ -1671,7 +1711,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [cRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_cetak WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}cetak WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             cetak = cRows?.[0] || null;
@@ -1679,7 +1719,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [sRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_sublim WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}sublim WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             sublim = sRows?.[0] || null;
@@ -1687,7 +1727,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [dRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_dtf WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}dtf WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             dtf = dRows?.[0] || null;
@@ -1695,7 +1735,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [bRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_bordir WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}bordir WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             bordir = bRows?.[0] || null;
@@ -1703,7 +1743,7 @@ const getPermintaanHargaDetail = async ({
 
         try {
             const [pRows] = await db.query(
-                `SELECT * FROM kalkulasi.tkalkulasi_polyflex WHERE kald_nomor = ? LIMIT 1`,
+                `SELECT * FROM ${tablePrefix}polyflex WHERE kald_nomor = ? LIMIT 1`,
                 [kalNomor],
             );
             polyflex = pRows?.[0] || null;
@@ -1719,7 +1759,9 @@ const getPermintaanHargaDetail = async ({
         row.kalkulasi_detail = {
             hdr: {
                 kal_nomor: hdr.kal_nomor,
-                kal_mh_nomor: hdr.kal_mh_nomor,
+                kal_mh_nomor: hdr.kal_mh_nomor || row.mh_nomor,
+                is_finance: isFinance,
+                source: isFinance ? 'tkalkulasi2' : 'tkalkulasi',
                 kal_project: hdr.kal_project,
                 kal_tanggal: hdr.kal_tanggal,
                 kal_cus: hdr.kal_cus,
