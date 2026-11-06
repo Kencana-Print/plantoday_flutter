@@ -38,8 +38,8 @@ const getInvoiceJatuhTempo = async ({
     const params = [];
     let salesFilterSql = "";
     if (salesKode) {
-        salesFilterSql = " AND (src.SalKode = ? OR src.SalNama LIKE ?) ";
-        params.push(salesKode, `%${salesKode}%`);
+        salesFilterSql = " AND (src.SalKode = ? OR src.SalNama = ? OR src.SalNama LIKE ?) ";
+        params.push(salesKode, salesKode, `%${salesKode}%`);
     }
 
     let searchSql = "";
@@ -60,11 +60,13 @@ const getInvoiceJatuhTempo = async ({
         p.customer AS CusKode,
         c.cus_nama AS CusNama,
         ${INKASO_SAL_CORR} AS SalKode,
+        IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama,
         p.debet AS Nominal,
         IFNULL(kr.kredit, 0) AS Terbayar,
         (p.debet - IFNULL(kr.kredit, 0)) AS Sisa
       FROM piutang_debet p
       INNER JOIN tcustomer c ON c.cus_kode = p.customer
+      LEFT JOIN tsales s ON s.sal_kode = ${INKASO_SAL_CORR}
       LEFT JOIN (
         SELECT invf_normal, MIN(invf_taknormal) AS taknormal
         FROM tinv_flag GROUP BY invf_normal
@@ -81,9 +83,8 @@ const getInvoiceJatuhTempo = async ({
     `;
 
     const filteredQuery = `
-      SELECT src.*, IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama
+      SELECT src.*
       FROM (${baseSql}) src
-      LEFT JOIN tsales s ON s.sal_kode = src.SalKode
       WHERE 1=1 ${salesFilterSql} ${searchSql}
     `;
 

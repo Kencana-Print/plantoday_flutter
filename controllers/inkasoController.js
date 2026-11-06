@@ -18,13 +18,30 @@ const isManagerUser = (user) => {
     return keywords.some((k) => role.includes(k));
 };
 
+const isSpecialAll = (val) => {
+    if (!val) return true;
+    const s = String(val).trim().toUpperCase();
+    return (
+        s === "" ||
+        s === "ALL" ||
+        s === "SEMUA" ||
+        s === "ALL SALES" ||
+        s === "SEMUA SALES" ||
+        s === "NULL" ||
+        s === "UNDEFINED" ||
+        s === "SEMUA USER"
+    );
+};
+
 const getInvoiceJatuhTempo = async (req, res) => {
     try {
         const isManager = isManagerUser(req.user);
         const authSalesKode = String(req.user?.sales_kode || req.user?.kode || "").trim();
         const authSalesNama = String(req.user?.sales_nama || req.user?.nama || "").trim();
 
-        let targetSales = req.query.sales ? String(req.query.sales).trim() : null;
+        let targetSales = req.query.sales && !isSpecialAll(req.query.sales)
+            ? String(req.query.sales).trim()
+            : null;
         if (!isManager) {
             // Untuk sales biasa: kunci ke sales miliknya (utamakan kode, fallback ke nama sales/karyawan)
             targetSales = authSalesKode || authSalesNama || null;
