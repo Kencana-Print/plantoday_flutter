@@ -270,10 +270,8 @@ const getMasterPermintaanHargaForPenawaran = async (req, res) => {
         const page = Math.max(Number(req.query.page) || 1, 1);
 
         const authSalesKode = String(req.user?.sales_kode || "").trim();
-        const isManager =
-            String(req.user?.jabatan || "")
-                .trim()
-                .toUpperCase() === "MANAGER";
+        const userJab = String(req.user?.jabatan || "").trim().toUpperCase();
+        const isManager = userJab === "MANAGER" || userJab === "MARKETING";
         const requestedSalesKode = String(req.query.sales_kode || "").trim();
         const referenceCustomerKode = String(
             req.query.customer_kode || "",

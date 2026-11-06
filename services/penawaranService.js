@@ -195,10 +195,10 @@ const buildStatusCondition = (status) => {
     };
 };
 
-const isManagerUser = (user) =>
-    String(user?.jabatan || "")
-        .trim()
-        .toUpperCase() === "MANAGER";
+const isManagerUser = (user) => {
+    const jab = String(user?.jabatan || "").trim().toUpperCase();
+    return jab === "MANAGER" || jab === "MARKETING";
+};
 
 const getAuthSalesKode = (reqOrUser) => {
     const user = reqOrUser?.user || reqOrUser;

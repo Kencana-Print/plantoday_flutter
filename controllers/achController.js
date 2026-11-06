@@ -65,7 +65,7 @@ const getAchievementRange = async (req, res) => {
         );
 
         const role = String(req.user?.jabatan || "").toUpperCase();
-        const isManager = role === "MANAGER";
+        const isManager = role === "MANAGER" || role === "MARKETING";
 
         const result = await achService.getAchievementRange({
             fromYear: fy,
@@ -242,8 +242,8 @@ const getAchievementOmset = async (req, res) => {
 
 const getSpkOmsetByMonth = async (req, res) => {
     try {
-        const isManager =
-            String(req.user?.jabatan || "").toUpperCase() === "MANAGER";
+        const role = String(req.user?.jabatan || "").toUpperCase();
+        const isManager = role === "MANAGER" || role === "MARKETING";
 
         const tahun = Number(req.query.tahun);
         const bulan = Number(req.query.bulan);

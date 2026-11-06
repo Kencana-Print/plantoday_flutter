@@ -61,7 +61,8 @@ const isSalesUser = (user) =>
 
 const isManagerUser = (user) => {
     const jab = String(user?.jabatan || "").trim().toUpperCase();
-    return jab.split(/[\s/_-]+/).includes("MANAGER");
+    const tokens = jab.split(/[\s/_-]+/);
+    return tokens.includes("MANAGER") || tokens.includes("MARKETING");
 };
 
 const isOwnedBySalesKode = (user, row = {}) => {

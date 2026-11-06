@@ -20,10 +20,10 @@ const getCurrentMonthRange = () => {
     return { start: toYmd(start), end: toYmd(end) };
 };
 
-const isManagerUser = (req) =>
-    String(req.user?.jabatan || "")
-        .trim()
-        .toUpperCase() === "MANAGER";
+const isManagerUser = (req) => {
+    const jab = String(req.user?.jabatan || "").trim().toUpperCase();
+    return jab === "MANAGER" || jab === "MARKETING";
+};
 
 const getAuthSalesKode = (req) => String(req.user?.sales_kode || "").trim();
 

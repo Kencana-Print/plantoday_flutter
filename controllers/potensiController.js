@@ -1,9 +1,9 @@
 const potensiService = require("../services/potensiService");
 
-const isManagerUser = (user) =>
-    String(user?.jabatan || "")
-        .trim()
-        .toUpperCase() === "MANAGER";
+const isManagerUser = (user) => {
+    const jab = String(user?.jabatan || "").trim().toUpperCase();
+    return jab === "MANAGER" || jab === "MARKETING";
+};
 
 const getAuthSalesKode = (req) =>
     String(req.user?.sales_kode || req.user?.kode || "").trim();
