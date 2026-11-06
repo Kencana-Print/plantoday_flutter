@@ -2,7 +2,33 @@ const potensiService = require("../services/potensiService");
 
 const isManagerUser = (user) => {
     const jab = String(user?.jabatan || "").trim().toUpperCase();
-    return jab === "MANAGER" || jab === "MARKETING";
+    return jab.includes("MANAGER") || jab.includes("MARKETING");
+};
+
+const cleanSalesFilter = (raw, user, isManager) => {
+    if (!raw) return "";
+    const s = String(raw).trim();
+    const upper = s.toUpperCase();
+    if (
+        !s ||
+        upper === "ALL" ||
+        upper === "SEMUA" ||
+        upper === "ALL SALES" ||
+        upper === "SEMUA SALES" ||
+        upper === "UNDEFINED" ||
+        upper === "NULL" ||
+        upper === "MANAGER" ||
+        upper === "MARKETING"
+    ) {
+        return "";
+    }
+    if (isManager) {
+        const authNama = String(user?.nama || user?.username || "").trim().toUpperCase();
+        if (authNama && upper === authNama) {
+            return "";
+        }
+    }
+    return s;
 };
 
 const getAuthSalesKode = (req) =>
@@ -49,7 +75,7 @@ const getPotensiKandidatList = async (req, res) => {
         const data = await potensiService.getKandidatList({
             managerRole,
             authSalesKode,
-            salesFilter: String(req.query.sales || "").trim(),
+            salesFilter: cleanSalesFilter(req.query.sales, req.user, managerRole),
             search: String(req.query.search || "").trim(),
             sumberFilter: String(req.query.sumber || "ALL").trim().toUpperCase(),
         });
@@ -137,7 +163,7 @@ const getPotensiList = async (req, res) => {
             authSalesKode,
             startDate,
             endDate,
-            salesFilter: String(req.query.sales || "").trim(),
+            salesFilter: cleanSalesFilter(req.query.sales, req.user, managerRole),
             search: String(req.query.search || "").trim(),
             statusFilter: String(req.query.status || "ALL").trim().toUpperCase(),
         });

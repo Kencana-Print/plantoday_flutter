@@ -42,6 +42,22 @@ const getNextPotensiNumber = async (
  * - Penawaran: belum ada MAP aktif, belum selesai/close, dan belum ada di tpotensi aktif (cek pot_pend_id & nama)
  * - MAP: aktif, belum close, belum terbit SPK aktif, belum terbit SO aktif, dan belum ada di tpotensi aktif
  */
+const isSpecialAllFilter = (val) => {
+    if (!val) return true;
+    const u = String(val).trim().toUpperCase();
+    return (
+        u === "" ||
+        u === "ALL" ||
+        u === "SEMUA" ||
+        u === "ALL SALES" ||
+        u === "SEMUA SALES" ||
+        u === "UNDEFINED" ||
+        u === "NULL" ||
+        u === "MANAGER" ||
+        u === "MARKETING"
+    );
+};
+
 const getKandidatList = async ({
     managerRole,
     authSalesKode,
@@ -50,7 +66,7 @@ const getKandidatList = async ({
     sumberFilter = "ALL",
 }) => {
     const effectiveSalesKode = managerRole
-        ? salesFilter || null
+        ? (isSpecialAllFilter(salesFilter) ? null : String(salesFilter).trim())
         : authSalesKode;
     const searchLike = search ? `%${search}%` : null;
 
@@ -510,7 +526,7 @@ const getList = async ({
     statusFilter = "ALL",
 }) => {
     const effectiveSalesKode = managerRole
-        ? salesFilter || null
+        ? (isSpecialAllFilter(salesFilter) ? null : String(salesFilter).trim())
         : authSalesKode;
 
     const whereClauses = [
