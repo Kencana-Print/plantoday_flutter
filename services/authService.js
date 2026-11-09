@@ -31,7 +31,7 @@ const login = async ({ username, password, deviceId, versiApp }) => {
     });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
-        expiresIn: "7d",
+        expiresIn: process.env.JWT_EXPIRES_IN || "90d",
     });
 
     await db.query(
