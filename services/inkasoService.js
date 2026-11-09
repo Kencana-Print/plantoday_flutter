@@ -110,10 +110,10 @@ const getInvoiceJatuhTempo = async ({
     salesKode = null,
     search = "",
     page = 1,
-    limit = 50,
+    limit = 5000,
 }) => {
     const pageNum = Math.max(1, Number(page) || 1);
-    const limitNum = Math.max(1, Number(limit) || 50);
+    const limitNum = Math.max(1, Number(limit) || 5000);
 
     const params = [];
     let filterSql = "";

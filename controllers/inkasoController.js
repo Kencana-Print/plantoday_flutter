@@ -63,7 +63,7 @@ const getInvoiceJatuhTempo = async (req, res) => {
                         items: [],
                         pagination: {
                             page: 1,
-                            limit: Number(req.query.limit || 50),
+                            limit: Number(req.query.limit || 5000),
                             total_items: 0,
                             total_pages: 1,
                         },
@@ -76,7 +76,7 @@ const getInvoiceJatuhTempo = async (req, res) => {
             salesKode: targetSales,
             search: String(req.query.search || "").trim(),
             page: req.query.page || 1,
-            limit: req.query.limit || 50,
+            limit: req.query.limit || 5000,
         });
 
         return res.status(200).json({
