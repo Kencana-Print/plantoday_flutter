@@ -10,6 +10,7 @@ import '../../core/utils/app_toast.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/achievement_model.dart';
 import '../../models/customer_model.dart';
+import '../../models/invoice_jatuh_tempo_model.dart';
 import '../../models/penawaran_model.dart';
 import '../../models/permintaan_harga_model.dart';
 import '../../models/potensi_model.dart';
@@ -18,6 +19,7 @@ import '../../models/visit_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/version_provider.dart';
 import '../../repositories/achievement_repository.dart';
+import '../../repositories/invoice_jatuh_tempo_repository.dart';
 import '../../repositories/penawaran_repository.dart';
 import '../../repositories/permintaan_harga_repository.dart';
 import '../../repositories/potensi_repository.dart';
@@ -111,6 +113,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   List<PotensiListItem> _rawPotensiItems = [];
   String _selectedPotensiSales = 'ALL';
   bool _isPotensiExpanded = false;
+
+  // Invoice Jatuh Tempo Data states
+  InvoiceJatuhTempoSummary? _invoiceJatuhTempoSummary;
+  List<InvoiceJatuhTempoItem> _rawInvoiceJatuhTempoItems = [];
+  String _selectedJatuhTempoSales = 'ALL';
+  bool _isJatuhTempoExpanded = false;
+  final Set<String> _expandedHomeInkasoSales = <String>{};
 
   List<PermintaanHargaItem> _recentPh = [];
   List<TrackingPenawaranListItem> _recentPenawaran = [];
@@ -333,6 +342,114 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   double get _totalNominalPotensi =>
       _filteredPotensiItems.fold(0.0, (acc, it) => acc + it.harga);
 
+  // Filtered Jatuh Tempo
+  List<String> get _availableJatuhTempoSales {
+    final set = <String>{};
+    if (_invoiceJatuhTempoSummary?.bySales != null) {
+      for (final s in _invoiceJatuhTempoSummary!.bySales) {
+        if (s.salNama.isNotEmpty && s.salNama != '(Tanpa Sales)') {
+          set.add(s.salNama.trim());
+        }
+      }
+    }
+    for (final it in _rawInvoiceJatuhTempoItems) {
+      if (it.salNama.isNotEmpty && it.salNama != '(Tanpa Sales)') {
+        set.add(it.salNama.trim());
+      }
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
+  void _showJatuhTempoSalesPicker() {
+    final list = _availableJatuhTempoSales;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Pilih Sales (Jatuh Tempo)',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(height: 12),
+              ListTile(
+                title: const Text(
+                  'Semua Sales',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                trailing: _selectedJatuhTempoSales == 'ALL'
+                    ? const Icon(Icons.check, color: Color(0xFF4F46E5))
+                    : null,
+                onTap: () {
+                  setState(() => _selectedJatuhTempoSales = 'ALL');
+                  Navigator.pop(ctx);
+                },
+              ),
+              ...list.map((salesName) {
+                final isSelected =
+                    _selectedJatuhTempoSales.toLowerCase() ==
+                    salesName.toLowerCase();
+                return ListTile(
+                  title: Text(
+                    salesName,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check, color: Color(0xFF4F46E5))
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedJatuhTempoSales = salesName);
+                    Navigator.pop(ctx);
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<InvoiceJatuhTempoItem> get _filteredJatuhTempoItems {
+    final user = ref.read(authProvider).user;
+    final isManager = user?.isManager ?? false;
+
+    return _rawInvoiceJatuhTempoItems.where((it) {
+      if (isManager && _selectedJatuhTempoSales != 'ALL') {
+        final sal = it.salNama.toLowerCase().trim();
+        final selected = _selectedJatuhTempoSales.toLowerCase().trim();
+        return sal == selected || sal.contains(selected) || selected.contains(sal);
+      }
+      return true;
+    }).toList();
+  }
+
+  double get _totalNominalJatuhTempo =>
+      _filteredJatuhTempoItems.fold(0.0, (acc, it) => acc + it.sisa);
+
   @override
   void initState() {
     super.initState();
@@ -409,6 +526,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final trackingRepo = ref.read(trackingRepositoryProvider);
     final potensiRepo = ref.read(potensiRepositoryProvider);
     final penawaranRepo = ref.read(penawaranRepositoryProvider);
+    final jatuhTempoRepo = ref.read(invoiceJatuhTempoRepositoryProvider);
 
     try {
       final results = await Future.wait([
@@ -457,6 +575,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 limit: 100,
               )
             : Future.value(<PenawaranListItem>[]),
+        // 10: invoice jatuh tempo (seluruh tagihan overdue tanpa batas tanggal)
+        jatuhTempoRepo.getInvoiceJatuhTempo(),
       ]);
 
       if (mounted) {
@@ -470,6 +590,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         final achRows = results[7] as List<AchievementUserRow>;
         final potensiRes = results[8] as PotensiResult;
         final unapprovedList = results[9] as List<PenawaranListItem>;
+        final jatuhTempoRes = results[10] as InvoiceJatuhTempoResult;
 
         AchievementUserRow? myAch;
         if (achRows.isNotEmpty) {
@@ -511,6 +632,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _myAchievement = myAch;
           _rawPotensiItems = potensiRes.list;
           _unapprovedPenawaranCount = unapprovedList.length;
+          _invoiceJatuhTempoSummary = jatuhTempoRes.summary;
+          _rawInvoiceJatuhTempoItems = jatuhTempoRes.items;
           _isLoading = false;
         });
       }
@@ -1155,6 +1278,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       const SizedBox(height: 14),
                       _buildPotensiCard(currencyFormat),
                       const SizedBox(height: 14),
+                      _buildInvoiceJatuhTempoCard(currencyFormat),
+                      const SizedBox(height: 14),
                       _buildPhModuleCard(),
                       const SizedBox(height: 14),
                       _buildPenawaranModuleCard(),
@@ -1217,6 +1342,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       _buildAchievementCard(currencyFormat),
                       const SizedBox(height: 16),
                       _buildPotensiCard(currencyFormat),
+                      const SizedBox(height: 16),
+                      _buildInvoiceJatuhTempoCard(currencyFormat),
                       const SizedBox(height: 16),
                       _buildPhModuleCard(),
                       const SizedBox(height: 16),
@@ -2540,7 +2667,482 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // ── MODUL PERMINTAAN HARGA TERBARU
+  // ── KARTU INVOICE JATUH TEMPO (OVERDUE / PROYEKSI INKASO)
+  Widget _buildInvoiceJatuhTempoCard(NumberFormat currencyFormat) {
+    final filtered = _filteredJatuhTempoItems;
+    final salesGroups = InkasoSalesGroup.groupItems(
+      filtered,
+      summaryBySales: _invoiceJatuhTempoSummary?.bySales,
+    );
+    final totalCount = filtered.length;
+    final totalSisa = _totalNominalJatuhTempo;
+    final groupsRealisasi = salesGroups.fold<double>(
+      0.0,
+      (acc, g) => acc + g.totalTerealisasi,
+    );
+    final totalTerealisasi =
+        _selectedJatuhTempoSales == 'ALL' &&
+            (_invoiceJatuhTempoSummary?.totalRealisasi ?? 0) > groupsRealisasi
+        ? _invoiceJatuhTempoSummary!.totalRealisasi
+        : groupsRealisasi;
+    final totalBatal = _invoiceJatuhTempoSummary?.totalBatal ?? 0.0;
+
+    String shortNum(double val) {
+      if (val >= 1e12) return '${(val / 1e12).toStringAsFixed(1)}T';
+      if (val >= 1e9) return '${(val / 1e9).toStringAsFixed(1)}M';
+      if (val >= 1e6) return '${(val / 1e6).toStringAsFixed(1)}Jt';
+      if (val >= 1e3) return '${(val / 1e3).toStringAsFixed(1)}Rb';
+      return val.toStringAsFixed(0);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color.fromRGBO(15, 23, 42, 0.08)),
+        boxShadow: AppShadows.card,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            _buildCardTopAccent(accentColor: const Color(0xFFEA580C)),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 20,
+                            color: Color(0xFFEA580C),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Invoice Jatuh Tempo',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      GestureDetector(
+                        onTap: () => context.push('/invoice-jatuh-tempo'),
+                        child: const Row(
+                          children: [
+                            Text(
+                              'Lihat Semua',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFEA580C),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 16,
+                              color: Color(0xFFEA580C),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Filter Sales (untuk role Manager)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _showJatuhTempoSalesPicker,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color.fromRGBO(15, 23, 42, 0.06),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Filter Sales',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                _selectedJatuhTempoSales == 'ALL'
+                                    ? 'Semua Sales'
+                                    : _selectedJatuhTempoSales,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFEA580C),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_drop_down_rounded,
+                                color: Color(0xFFEA580C),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 4 Metrik Manksi: Invoice Aktif, Sisa Tagihan, Terealisasi, Batal
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color.fromRGBO(15, 23, 42, 0.06),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        _buildInkasoMiniStat(
+                          'Invoice Aktif',
+                          '$totalCount',
+                          const Color(0xFF4F46E5),
+                        ),
+                        _buildInkasoMiniStat(
+                          'Sisa Tagihan',
+                          shortNum(totalSisa),
+                          const Color(0xFFEA580C),
+                        ),
+                        _buildInkasoMiniStat(
+                          'Terealisasi',
+                          shortNum(totalTerealisasi),
+                          const Color(0xFF10B981),
+                        ),
+                        _buildInkasoMiniStat(
+                          'Batal',
+                          shortNum(totalBatal),
+                          const Color(0xFF64748B),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Toggle Daftar Per Sales
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      setState(() {
+                        _isJatuhTempoExpanded = !_isJatuhTempoExpanded;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isJatuhTempoExpanded
+                            ? const Color(0xFFFFEDD5)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _isJatuhTempoExpanded
+                              ? const Color(0xFFEA580C)
+                              : const Color.fromRGBO(15, 23, 42, 0.06),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Rincian Per Sales (${salesGroups.length} Sales)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _isJatuhTempoExpanded
+                                  ? const Color(0xFFEA580C)
+                                  : const Color(0xFF0F172A),
+                            ),
+                          ),
+                          Icon(
+                            _isJatuhTempoExpanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            size: 18,
+                            color: _isJatuhTempoExpanded
+                                ? const Color(0xFFEA580C)
+                                : const Color(0xFF64748B),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // List Per Sales & Detail Inkaso jika dibuka
+                  if (_isJatuhTempoExpanded) ...[
+                    const SizedBox(height: 10),
+                    if (salesGroups.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'Tidak ada invoice jatuh tempo untuk filter ini.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    else
+                      ...salesGroups.map((grp) {
+                        final isSalExpanded = _expandedHomeInkasoSales
+                            .contains(grp.salNama);
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSalExpanded
+                                  ? const Color(
+                                      0xFFEA580C,
+                                    ).withValues(alpha: 0.35)
+                                  : const Color.fromRGBO(15, 23, 42, 0.06),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() {
+                                    if (isSalExpanded) {
+                                      _expandedHomeInkasoSales.remove(
+                                        grp.salNama,
+                                      );
+                                    } else {
+                                      _expandedHomeInkasoSales.add(grp.salNama);
+                                    }
+                                  });
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Wrap(
+                                          spacing: 6,
+                                          runSpacing: 3,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            Text(
+                                              grp.salNama.toUpperCase(),
+                                              style: const TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w900,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 1.5,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFEA580C),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                '${grp.jmlInvoice} invoice',
+                                                style: const TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Sisa ${shortNum(grp.totalSisa)}',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFFEA580C),
+                                              ),
+                                            ),
+                                            if (grp.totalTerealisasi > 0)
+                                              Text(
+                                                'Terealisasi ${shortNum(grp.totalTerealisasi)}',
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF10B981),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        isSalExpanded
+                                            ? Icons.keyboard_arrow_up_rounded
+                                            : Icons.keyboard_arrow_down_rounded,
+                                        size: 16,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (isSalExpanded) ...[
+                                const Divider(height: 1),
+                                Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(
+                                    children: grp.items.take(10).map((invItem) {
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4,
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${invItem.notaTampil.isNotEmpty ? invItem.notaTampil : invItem.nota} · ${invItem.tempo} (${invItem.terlambatHari}h)',
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                  Text(
+                                                    invItem.cusNama.isNotEmpty
+                                                        ? invItem.cusNama
+                                                        : invItem.cusKode,
+                                                    style: const TextStyle(
+                                                      fontSize: 10.5,
+                                                      color: Color(0xFF64748B),
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  currencyFormat.format(
+                                                    invItem.sisa,
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Color(0xFFEA580C),
+                                                  ),
+                                                ),
+                                                if (invItem.terbayar > 0)
+                                                  Text(
+                                                    'Real: ${shortNum(invItem.terbayar)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 9.5,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInkasoMiniStat(String label, String value, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPhModuleCard() {
     return _buildStripeModuleCard(
       stripeColor: const Color(0xFFEF4444),
@@ -2852,6 +3454,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   'title': 'Potensi',
                   'icon': Icons.trending_up_outlined,
                   'route': '/potensi',
+                },
+                {
+                  'title': 'Invoice Jatuh Tempo',
+                  'icon': Icons.alarm_on_outlined,
+                  'route': '/invoice-jatuh-tempo',
                 },
               ],
             },
@@ -3261,6 +3868,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     icon: Icons.trending_up_outlined,
                     tooltip: 'Potensi',
                     onTap: () => context.push('/potensi'),
+                  ),
+                  _buildRailIconButton(
+                    icon: Icons.alarm_on_outlined,
+                    tooltip: 'Invoice Jatuh Tempo',
+                    onTap: () => context.push('/invoice-jatuh-tempo'),
                   ),
                 ],
                 _buildRailIconButton(
@@ -4130,6 +4742,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   'title': 'Potensi',
                   'icon': Icons.trending_up_outlined,
                   'route': '/potensi',
+                },
+                {
+                  'title': 'Invoice Jatuh Tempo',
+                  'icon': Icons.alarm_on_outlined,
+                  'route': '/invoice-jatuh-tempo',
                 },
               ],
             },

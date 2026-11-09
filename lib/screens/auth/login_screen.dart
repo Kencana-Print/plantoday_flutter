@@ -45,6 +45,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _initDeviceAndVersion();
     // Tampilkan panduan pintasan otomatis saat pertama kali buka di web
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(authProvider).sessionExpired) {
+        AppToast.warning(
+          context,
+          'Sesi Anda telah berakhir. Silakan login kembali.',
+          title: 'Sesi Berakhir',
+        );
+      }
       showShortcutGuide(context, auto: true);
     });
   }

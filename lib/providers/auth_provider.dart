@@ -1,7 +1,25 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_client.dart';
 import '../core/storage/token_storage.dart';
 import '../models/user_model.dart';
+
+/// True jika JWT sudah lewat `exp`. Token yang tidak bisa dibaca dianggap kadaluarsa.
+bool isJwtExpired(String token, {DateTime? now}) {
+  try {
+    final parts = token.split('.');
+    if (parts.length != 3) return true;
+    final payload = jsonDecode(
+      utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+    ) as Map<String, dynamic>;
+    final exp = payload['exp'];
+    if (exp is! num) return false;
+    final expiry = DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+    return !(now ?? DateTime.now()).isBefore(expiry);
+  } catch (_) {
+    return true;
+  }
+}
 
 // Service Provider
 final tokenStorageProvider = Provider<TokenStorage>((ref) => TokenStorage());
@@ -16,12 +34,14 @@ class AuthState {
   final String? token;
   final bool isLoading;
   final String? errorMessage;
+  final bool sessionExpired;
 
   const AuthState({
     this.user,
     this.token,
     this.isLoading = false,
     this.errorMessage,
+    this.sessionExpired = false,
   });
 
   bool get isAuthenticated => token != null && user != null;
@@ -52,6 +72,7 @@ class AuthNotifier extends Notifier<AuthState> {
   AuthState build() {
     _storage = ref.read(tokenStorageProvider);
     _api = ref.read(apiClientProvider);
+    _api.onUnauthorized = _expireSession;
     _restoreSession();
     return const AuthState(isLoading: true);
   }
@@ -61,10 +82,21 @@ class AuthNotifier extends Notifier<AuthState> {
     final user = await _storage.getUser();
 
     if (token != null && user != null) {
+      if (isJwtExpired(token)) {
+        await _storage.clearSession();
+        state = const AuthState(isLoading: false, sessionExpired: true);
+        return;
+      }
       state = AuthState(user: user, token: token, isLoading: false);
     } else {
       state = const AuthState(isLoading: false);
     }
+  }
+
+  Future<void> _expireSession() async {
+    if (!state.isAuthenticated) return; // beberapa request 401 paralel → cukup sekali
+    state = const AuthState(isLoading: false, sessionExpired: true);
+    await _storage.clearSession();
   }
 
   Future<bool> login(

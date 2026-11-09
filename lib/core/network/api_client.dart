@@ -11,6 +11,9 @@ class ApiClient {
   static final Set<String> _inFlightMutationKeys = <String>{};
   static const Set<String> _mutatingMethods = {'POST', 'PUT', 'PATCH', 'DELETE'};
 
+  // Dipanggil saat server membalas 401 (token kadaluarsa / akun nonaktif).
+  void Function()? onUnauthorized;
+
   ApiClient({TokenStorage? storage}) : tokenStorage = storage ?? TokenStorage() {
     dio = Dio(
       BaseOptions(
@@ -75,6 +78,13 @@ class ApiClient {
           final key = error.requestOptions.extra['__mutationRequestKey'] as String?;
           if (key != null) {
             _inFlightMutationKeys.remove(key);
+          }
+          final hadToken =
+              error.requestOptions.headers['Authorization'] != null;
+          if (error.response?.statusCode == 401 &&
+              hadToken &&
+              !error.requestOptions.path.contains('/login')) {
+            onUnauthorized?.call();
           }
           return handler.next(error);
         },

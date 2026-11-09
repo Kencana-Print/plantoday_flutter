@@ -30,6 +30,7 @@ import '../screens/penawaran/tracking_spk_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_detail_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_form_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_list_screen.dart';
+import '../screens/inkaso/invoice_jatuh_tempo_screen.dart';
 import '../screens/potensi/laporan_potensi_screen.dart';
 import '../screens/potensi/potensi_screen.dart';
 import '../screens/visit/edit_visit_plan_screen.dart';
@@ -347,6 +348,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/laporan-potensi',
         name: 'laporan-potensi',
         builder: (context, state) => const LaporanPotensiScreen(),
+      ),
+
+      // Modul Invoice Jatuh Tempo
+      GoRoute(
+        path: '/invoice-jatuh-tempo',
+        name: 'invoice-jatuh-tempo',
+        builder: (context, state) => const InvoiceJatuhTempoScreen(),
       ),
 
       // Modul Achievement
