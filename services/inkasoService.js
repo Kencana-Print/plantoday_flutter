@@ -2,15 +2,23 @@ const db = require("../config/dbPenawaran");
 
 const INKASO_TOL = 1000;
 
-// Sales attribution: prioritaskan dari SPK/SO di detail invoice, fallback ke customer sales
-const INKASO_SAL_CORR = `
-  IFNULL((
-    SELECT MAX(COALESCE(s.spk_sal_kode, so.so_sal_kode))
-    FROM tinv_dtl d
-    LEFT JOIN tspk s ON s.spk_nomor = d.invd_spk_nomor
-    LEFT JOIN tsalesorder so ON so.so_nomor = d.invd_spk_nomor
-    WHERE d.invd_inv_nomor = p.nota
-  ), c.cus_sales)
+// Sisa tagihan per baris piutang_debet `p` — replikasi 100% dari Manksi (INKASO_SISA_CORR)
+const INKASO_SISA_CORR = `
+  (IFNULL((
+      SELECT pd2.debet
+      FROM piutang_debet pd2
+      WHERE pd2.nota = (SELECT tf.invf_taknormal FROM tinv_flag tf WHERE tf.invf_normal = p.nota LIMIT 1)
+        AND pd2.is_writeoff = 0
+      LIMIT 1
+    ), p.debet) - IFNULL((
+    SELECT SUM(kd.kredit)
+    FROM piutang_kredit_detail kd
+    INNER JOIN piutang_kredit_header kh ON kh.nomor = kd.nomor
+    WHERE kd.nota = IFNULL(
+      (SELECT tf.invf_taknormal FROM tinv_flag tf WHERE tf.invf_normal = p.nota LIMIT 1),
+      p.nota
+    )
+  ), 0))
 `;
 
 const INKASO_VALID_FILTER = `
@@ -29,22 +37,7 @@ const bucketOf = (hari) => {
     return null;
 };
 
-const buildResult = (rows, pageNum, limitNum) => {
-    const items = rows.map((r) => ({
-        nota: r.Nota,
-        nota_tampil: r.NotaTampil,
-        tanggal: r.Tanggal,
-        tempo: r.Tempo,
-        terlambat_hari: Number(r.TerlambatHari) || 0,
-        cus_kode: r.CusKode,
-        cus_nama: r.CusNama,
-        sal_kode: r.SalKode,
-        sal_nama: r.SalNama,
-        nominal: Number(r.Nominal) || 0,
-        terbayar: Number(r.Terbayar) || 0,
-        sisa: Number(r.Sisa) || 0,
-    }));
-
+const buildResult = (rows, pageNum, limitNum, totalBatal = 0) => {
     const aging = {
         "1_30": { count: 0, nominal: 0 },
         "31_60": { count: 0, nominal: 0 },
@@ -52,28 +45,86 @@ const buildResult = (rows, pageNum, limitNum) => {
         gt_90: { count: 0, nominal: 0 },
     };
     const salesMap = new Map();
+    const realisasiPerSales = new Map();
+    const activeItems = [];
     let totalOverdue = 0;
+    let totalRealisasi = 0;
 
-    for (const it of items) {
-        totalOverdue += it.sisa;
+    for (const r of rows) {
+        const nominal = Number(r.NominalAwal ?? r.Nominal) || 0;
+        const sisa = Number(r.Sisa) || 0;
+        const terealisasi =
+            r.Terbayar !== undefined
+                ? Number(r.Terbayar) || 0
+                : Math.min(nominal, Math.max(nominal - sisa, 0));
 
-        const key = bucketOf(it.terlambat_hari);
+        // Persis Manksi getInkasoDashboard: totalRealisasi dihitung sebelum filter sisa <= INKASO_TOL
+        totalRealisasi += terealisasi;
+
+        const salKode = r.SalKode || "";
+        const salNama = r.SalNama || "(Tanpa Sales)";
+        const salesKey = `${salKode}|${salNama}`;
+        realisasiPerSales.set(
+            salesKey,
+            (realisasiPerSales.get(salesKey) || 0) + terealisasi,
+        );
+
+        // Sudah lunas (sisa <= 1000) -> keluar dari daftar invoice aktif
+        if (sisa <= INKASO_TOL) continue;
+
+        const terlambatHari = Number(r.TerlambatHari) || 0;
+        totalOverdue += sisa;
+
+        const key = bucketOf(terlambatHari);
         if (key) {
             aging[key].count += 1;
-            aging[key].nominal += it.sisa;
+            aging[key].nominal += sisa;
         }
 
-        const salesKey = `${it.sal_kode || ""}|${it.sal_nama || ""}`;
         const agg = salesMap.get(salesKey) || {
-            sal_kode: it.sal_kode || "",
-            sal_nama: it.sal_nama || "",
+            sal_kode: salKode,
+            sal_nama: salNama,
             jml_invoice: 0,
             total_sisa: 0,
+            total_terealisasi: 0,
         };
         agg.jml_invoice += 1;
-        agg.total_sisa += it.sisa;
+        agg.total_sisa += sisa;
+        agg.total_terealisasi += terealisasi;
         salesMap.set(salesKey, agg);
+
+        activeItems.push({
+            nomor: r.Nomor || "",
+            nota: r.Nota || "",
+            nota_tampil: r.NotaTampil || r.Nota || "",
+            tanggal: r.Tanggal || "",
+            tempo: r.Tempo || "",
+            terlambat_hari: terlambatHari,
+            cus_kode: r.CusKode || "",
+            cus_nama: r.CusNama || "",
+            sal_kode: salKode,
+            sal_nama: salNama,
+            nominal,
+            terbayar: terealisasi,
+            sisa,
+            tgl_target: r.TglTarget || "",
+            catatan: r.Catatan || "",
+            user_create: r.UserCreate || "",
+            date_create: r.DateCreate || "",
+        });
     }
+
+    // Sinkronkan total_terealisasi per sales (termasuk invoice yang sudah lunas di sales tsb)
+    for (const [salesKey, agg] of salesMap.entries()) {
+        agg.total_terealisasi =
+            realisasiPerSales.get(salesKey) ?? agg.total_terealisasi;
+    }
+
+    activeItems.sort(
+        (a, b) =>
+            b.terlambat_hari - a.terlambat_hari ||
+            String(a.nota).localeCompare(String(b.nota)),
+    );
 
     const bySales = Array.from(salesMap.values()).sort(
         (a, b) => b.total_sisa - a.total_sisa,
@@ -83,28 +134,26 @@ const buildResult = (rows, pageNum, limitNum) => {
 
     return {
         summary: {
-            total_invoice: items.length,
+            total_invoice: activeItems.length,
             total_overdue: totalOverdue,
+            total_realisasi: totalRealisasi,
+            total_batal: Number(totalBatal) || 0,
             aging,
             by_sales: bySales,
         },
-        items: items.slice(offset, offset + limitNum),
+        items: activeItems.slice(offset, offset + limitNum),
         pagination: {
             page: pageNum,
             limit: limitNum,
-            total_items: items.length,
-            total_pages: Math.ceil(items.length / limitNum) || 1,
+            total_items: activeItems.length,
+            total_pages: Math.ceil(activeItems.length / limitNum) || 1,
         },
     };
 };
 
 /**
- * Mengambil daftar invoice yang sudah jatuh tempo beserta ringkasan KPI dan aging bucket.
- * Replikasi logic ERP Manksi.
- *
- * Catatan performa: query dasar dijalankan SEKALI lalu agregasi (summary/aging/by_sales)
- * dan pagination dilakukan di JS. Sebelumnya query dijalankan 3x dan join `tsales`
- * memakai ekspresi berkorelasi sehingga response bisa >45 detik (timeout client 30 detik).
+ * Mengambil data Proyeksi Inkaso / Invoice Jatuh Tempo yang ditagih per sales.
+ * Replikasi 100% dari getInkasoDashboard di Manksi ERP Web (manksi_backend).
  */
 const getInvoiceJatuhTempo = async ({
     salesKode = null,
@@ -116,74 +165,68 @@ const getInvoiceJatuhTempo = async ({
     const limitNum = Math.max(1, Number(limit) || 5000);
 
     const params = [];
+    const batalParams = [];
     let filterSql = "";
+    let batalSalesFilterSql = "";
+
     if (salesKode) {
-        filterSql += " AND (x.SalKode = ? OR x.SalNama = ? OR x.SalNama LIKE ?) ";
+        filterSql +=
+            " AND (k.pik_sal_kode = ? OR s.sal_nama = ? OR s.sal_nama LIKE ?) ";
         params.push(salesKode, salesKode, `%${salesKode}%`);
-    }
-    if (search) {
-        filterSql += " AND (x.Nota LIKE ? OR x.NotaTampil LIKE ? OR x.CusNama LIKE ? OR x.CusKode LIKE ?) ";
-        const s = `%${search}%`;
-        params.push(s, s, s, s);
+
+        batalSalesFilterSql =
+            " AND (k.pik_sal_kode = ? OR s.sal_nama = ? OR s.sal_nama LIKE ?) ";
+        batalParams.push(salesKode, salesKode, `%${salesKode}%`);
     }
 
-    // Join tsales dilakukan di lapisan luar (set-based), BUKAN pada ekspresi
-    // berkorelasi di ON clause — pola lama membuat subquery dieksekusi per kombinasi baris.
+    if (search) {
+        filterSql +=
+            " AND (k.pik_nota LIKE ? OR c.cus_nama LIKE ? OR k.pik_cus_kode LIKE ? OR s.sal_nama LIKE ? OR k.pik_catatan LIKE ?) ";
+        const s = `%${search}%`;
+        params.push(s, s, s, s, s);
+    }
+
     const sql = `
-      SELECT x.*
-      FROM (
-        SELECT
-          b.Nota,
-          b.NotaTampil,
-          b.Tanggal,
-          b.Tempo,
-          b.TglTempo,
-          b.TerlambatHari,
-          b.CusKode,
-          b.CusNama,
-          b.SalKode,
-          IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama,
-          b.Nominal,
-          b.Terbayar,
-          b.Sisa
-        FROM (
-          SELECT
-            p.nota AS Nota,
-            IFNULL(tfm.taknormal, p.nota) AS NotaTampil,
-            DATE_FORMAT(p.tanggal, '%d-%m-%Y') AS Tanggal,
-            DATE_FORMAT(p.tanggal_tempo, '%d-%m-%Y') AS Tempo,
-            p.tanggal_tempo AS TglTempo,
-            DATEDIFF(CURDATE(), p.tanggal_tempo) AS TerlambatHari,
-            p.customer AS CusKode,
-            c.cus_nama AS CusNama,
-            ${INKASO_SAL_CORR} AS SalKode,
-            p.debet AS Nominal,
-            IFNULL(kr.kredit, 0) AS Terbayar,
-            (p.debet - IFNULL(kr.kredit, 0)) AS Sisa
-          FROM piutang_debet p
-          INNER JOIN tcustomer c ON c.cus_kode = p.customer
-          LEFT JOIN (
-            SELECT invf_normal, MIN(invf_taknormal) AS taknormal
-            FROM tinv_flag GROUP BY invf_normal
-          ) tfm ON tfm.invf_normal = p.nota
-          LEFT JOIN (
-            SELECT kd.nota, SUM(kd.kredit) AS kredit
-            FROM piutang_kredit_detail kd
-            INNER JOIN piutang_kredit_header kh ON kh.nomor = kd.nomor
-            GROUP BY kd.nota
-          ) kr ON kr.nota = IFNULL(tfm.taknormal, p.nota)
-          WHERE p.tanggal_tempo < CURDATE()
-            ${INKASO_VALID_FILTER}
-            AND (p.debet - IFNULL(kr.kredit, 0)) > ${INKASO_TOL}
-        ) b
-        LEFT JOIN tsales s ON s.sal_kode = b.SalKode
-      ) x
-      WHERE 1=1 ${filterSql}
-      ORDER BY x.TerlambatHari DESC, x.Nota ASC
+      SELECT
+        k.pik_nomor AS Nomor,
+        k.pik_nota AS Nota,
+        k.pik_nota AS NotaTampil,
+        k.pik_sal_kode AS SalKode,
+        IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama,
+        k.pik_cus_kode AS CusKode,
+        c.cus_nama AS CusNama,
+        k.pik_nominal AS NominalAwal,
+        DATE_FORMAT(p.tanggal, '%d-%m-%Y') AS Tanggal,
+        DATE_FORMAT(p.tanggal_tempo, '%d-%m-%Y') AS Tempo,
+        DATEDIFF(CURDATE(), p.tanggal_tempo) AS TerlambatHari,
+        DATE_FORMAT(k.pik_tgl_target, '%Y-%m-%d') AS TglTarget,
+        k.pik_catatan AS Catatan,
+        k.user_create AS UserCreate,
+        DATE_FORMAT(k.date_create, '%Y-%m-%d %H:%i:%s') AS DateCreate,
+        ${INKASO_SISA_CORR} AS Sisa
+      FROM tproyeksi_inkaso k
+      INNER JOIN piutang_debet p ON p.nota = k.pik_nota
+        ${INKASO_VALID_FILTER}
+      LEFT JOIN tcustomer c ON c.cus_kode = k.pik_cus_kode
+      LEFT JOIN tsales s ON s.sal_kode = k.pik_sal_kode
+      WHERE k.pik_status <> 'BATAL'
+        ${filterSql}
     `;
 
-    const [rows] = await db.query(sql, params);
-    return buildResult(rows, pageNum, limitNum);
+    const batalSql = `
+      SELECT IFNULL(SUM(k.pik_nominal), 0) AS TotalBatal
+      FROM tproyeksi_inkaso k
+      LEFT JOIN tsales s ON s.sal_kode = k.pik_sal_kode
+      WHERE k.pik_status = 'BATAL'
+        ${batalSalesFilterSql}
+    `;
+
+    const [[rows], [[batalRow]]] = await Promise.all([
+        db.query(sql, params),
+        db.query(batalSql, batalParams),
+    ]);
+
+    return buildResult(rows, pageNum, limitNum, batalRow?.TotalBatal || 0);
 };
 
 module.exports = {
