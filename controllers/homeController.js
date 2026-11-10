@@ -7,17 +7,48 @@ function getPublicBaseUrl(req) {
 }
 
 const calonCustomer = async (req, res) => {
-    return res.status(403).json({
-        success: false,
-        message: "Fitur tambah data customer baru telah dinonaktifkan.",
-    });
+    try {
+        const result = await homeService.calonCustomer(req.body || {});
+        return res.status(result.status).json(result.body);
+    } catch (err) {
+        console.error("CALON CUSTOMER ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: err.sqlMessage || err.message || "Gagal menyimpan calon customer",
+        });
+    }
 };
 
 const updateCalonCustomerByKode = async (req, res) => {
-    return res.status(403).json({
-        success: false,
-        message: "Fitur edit data customer telah dinonaktifkan.",
-    });
+    try {
+        const cc_kode = String(req.params.cc_kode || "").trim();
+        const result = await homeService.updateCalonCustomerByKode({
+            cc_kode,
+            body: req.body || {},
+        });
+        return res.status(result.status).json(result.body);
+    } catch (err) {
+        console.error("UPDATE CUSTOMER ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: err.sqlMessage || err.message || "Gagal memperbarui customer",
+        });
+    }
+};
+
+const cekCustomerNama = async (req, res) => {
+    try {
+        const nama = String(req.query.nama || "").trim();
+        const exclude_kode = String(req.query.exclude_kode || "").trim();
+        const result = await homeService.cekCustomerNama({ nama, exclude_kode });
+        return res.json(result);
+    } catch (err) {
+        console.error("CEK CUSTOMER NAMA ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: err.message || "Gagal memeriksa nama customer",
+        });
+    }
 };
 
 const getCabang = async (req, res) => {
@@ -588,6 +619,7 @@ const getUser = async (req, res) => {
 module.exports = {
     calonCustomer,
     updateCalonCustomerByKode,
+    cekCustomerNama,
     cariCustomer,
     getCabang,
     createVisitPlan,

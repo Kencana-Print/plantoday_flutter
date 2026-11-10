@@ -42,6 +42,7 @@ router.put("/visit-plan/:id", homeController.updateVisitPlan);
 router.get("/cabang", homeController.getCabang);
 router.post("/visit-plan", homeController.createVisitPlan);
 router.get("/cari-customer", homeController.cariCustomer);
+router.get("/customer/cek-nama", homeController.cekCustomerNama);
 
 // Calon Customer
 router.get("/rekap-calon-customer", homeController.getRekapCalonCustomer);

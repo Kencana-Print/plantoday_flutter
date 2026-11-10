@@ -4,6 +4,7 @@ const {
     salesAliasMembers,
 } = require("../utils/salesIdentityResolver");
 const { ensureImageUnder500KB } = require("../utils/imageOptimizer");
+const { findSimilarCustomers } = require("../utils/customerNameHelper");
 
 // Bangun klausa IN untuk mencocokkan user/karyawan ke semua alias nama sales.
 const salesNameInClause = (user, col) => {
@@ -92,6 +93,19 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
             ],
         );
 
+        let notice = null;
+        try {
+            const similar = await findSimilarCustomers(conn, nama, {
+                tableName: "kencanaprint.tcustomer",
+            });
+            if (similar.length) {
+                const top = similar[0];
+                notice = `Data customer serupa sudah ada dengan kode ${top.kode} (${top.nama}${top.kota ? " - " + top.kota : ""})`;
+            }
+        } catch (simErr) {
+            console.error("[HomeService][Customer][CheckSimilarError]", simErr);
+        }
+
         await conn.commit();
 
         return {
@@ -102,6 +116,7 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
                 data: {
                     cc_id: nextKodeNum,
                     cc_kode: ccKode,
+                    notice,
                 },
             },
         };
@@ -259,6 +274,39 @@ const cariCustomer = async (search) => {
     );
 
     return rows;
+};
+
+const cekCustomerNama = async ({ nama, exclude_kode }) => {
+    if (!nama || String(nama).trim().length < 2) {
+        return {
+            success: true,
+            data: {
+                isDuplicate: false,
+                notice: null,
+                matches: [],
+            },
+        };
+    }
+
+    const matches = await findSimilarCustomers(db, nama, {
+        excludeKode: exclude_kode,
+        tableName: "kencanaprint.tcustomer",
+    });
+
+    let notice = null;
+    if (matches.length) {
+        const top = matches[0];
+        notice = `Data customer serupa sudah ada dengan kode ${top.kode} (${top.nama}${top.kota ? " - " + top.kota : ""})`;
+    }
+
+    return {
+        success: true,
+        data: {
+            isDuplicate: matches.length > 0,
+            notice,
+            matches: matches.slice(0, 10),
+        },
+    };
 };
 
 const createVisitPlan = async ({
@@ -1331,6 +1379,7 @@ const getUserByCabang = async (cabang) => {
 module.exports = {
     calonCustomer,
     updateCalonCustomerByKode,
+    cekCustomerNama,
     getCabang,
     cariCustomer,
     createVisitPlan,

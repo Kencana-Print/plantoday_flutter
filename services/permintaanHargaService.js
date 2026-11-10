@@ -9,6 +9,7 @@ const {
     findActiveSalesByNameNormalized,
 } = require("../utils/salesIdentityResolver");
 const { kalkulasiGarmenEngine } = require("../utils/kalkulasiGarmenHelper");
+const { findSimilarCustomers } = require("../utils/customerNameHelper");
 
 const nomorLocks = new Map();
 const uploadDir = path.join(process.cwd(), "uploads", "mintaharga");
@@ -2729,6 +2730,17 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
             }
         }
 
+        let notice = null;
+        try {
+            const similar = await findSimilarCustomers(db, nama, { tableName: "tcustomer" });
+            if (similar.length) {
+                const top = similar[0];
+                notice = `Data customer serupa sudah ada dengan kode ${top.kode} (${top.nama}${top.kota ? " - " + top.kota : ""})`;
+            }
+        } catch (simErr) {
+            console.error("[PermintaanHarga][Customer][CheckSimilarError]", simErr);
+        }
+
         const kode = await withNomorLock("customer:create", async () => {
             conn = await db.getConnection();
             try {
@@ -2803,6 +2815,7 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
                 data: {
                     kode,
                     nama,
+                    notice,
                 },
             },
         };
@@ -2867,7 +2880,7 @@ const uploadPermintaanHargaImage = async ({ nomor, slot, file, user }) => {
     }
 
     const curStatus = String(rows[0].mh_status || "").trim().toUpperCase();
-    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "NEGO", "WAIT", "MINTA"]);
+    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "BELUM_DIVERIFIKASI", "NEGO", "WAIT", "MINTA", "DONE"]);
     if (!allowedStatuses.has(curStatus)) {
         return {
             status: 409,
@@ -3004,7 +3017,7 @@ const uploadPermintaanHargaImageBase64 = async ({
     }
 
     const curStatus = String(rows[0].mh_status || "").trim().toUpperCase();
-    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "NEGO", "WAIT", "MINTA"]);
+    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "BELUM_DIVERIFIKASI", "NEGO", "WAIT", "MINTA", "DONE"]);
     if (!allowedStatuses.has(curStatus)) {
         return {
             status: 409,
@@ -3052,6 +3065,24 @@ const uploadPermintaanHargaImageBase64 = async ({
         };
     }
 
+    try {
+        buffer = await sharp(buffer)
+            .rotate()
+            .resize({
+                width: 1280,
+                height: 1280,
+                fit: "inside",
+                withoutEnlargement: true,
+            })
+            .jpeg({ quality: 80, force: true })
+            .toBuffer();
+    } catch (sharpErr) {
+        console.error(
+            "[PermintaanHarga][Upload][Base64][SharpError]",
+            sharpErr,
+        );
+    }
+
     const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB
     if (buffer.length > MAX_FILE_SIZE) {
         return {
@@ -3063,17 +3094,6 @@ const uploadPermintaanHargaImageBase64 = async ({
         };
     }
 
-    try {
-        buffer = await sharp(buffer)
-            .jpeg({ quality: 90, force: true })
-            .toBuffer();
-    } catch (sharpErr) {
-        console.error(
-            "[PermintaanHarga][Upload][Base64][SharpError]",
-            sharpErr,
-        );
-    }
-
     const safeNomor = String(nomor || "")
         .trim()
         .replace(/[^A-Z0-9.\-_/]/gi, "_");
@@ -3082,6 +3102,7 @@ const uploadPermintaanHargaImageBase64 = async ({
     const targetPath = path.join(UPLOAD_DIR, fileName);
 
     await fs.promises.writeFile(targetPath, buffer);
+    await ensureImageUnder500KB(targetPath);
 
     const baseUrl = buildImageBaseUrl();
     const imagePaths = buildImagePaths(nomor);
@@ -3139,7 +3160,7 @@ const deletePermintaanHargaImage = async ({ nomor, slot, user }) => {
         };
     }
     const curStatus = String(rows[0].mh_status || "").trim().toUpperCase();
-    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "NEGO", "WAIT", "MINTA"]);
+    const allowedStatuses = new Set(["BELUM", "BELUM DIVERIFIKASI", "BELUM_DIVERIFIKASI", "NEGO", "WAIT", "MINTA", "DONE"]);
     if (!allowedStatuses.has(curStatus)) {
         return {
             status: 409,
