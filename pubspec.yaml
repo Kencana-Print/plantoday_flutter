@@ -5,7 +5,7 @@ publish_to: "none"
 version: 1.2.7+47 # Naikkan setiap kali ada update
 
 environment:
-    sdk: ^3.12.1
+    sdk: ^3.11.1
 
 dependencies:
     flutter:
