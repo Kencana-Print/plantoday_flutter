@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/image_compress_helper.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -17,6 +18,7 @@ import '../../repositories/permintaan_harga_repository.dart';
 import '../../widgets/customer_picker_modal.dart';
 import '../../widgets/ui/app_button.dart';
 import '../../widgets/ui/app_card.dart';
+import '../../widgets/web_safe_network_image.dart';
 
 class _DecimalTextInputFormatter extends TextInputFormatter {
   const _DecimalTextInputFormatter();
@@ -433,6 +435,7 @@ class _PermintaanHargaFormScreenState
   Uint8List? _imageBytes;
   String? _imageName;
   int? _imageSizeBytes;
+  String? _existingImageUrl;
   final ImagePicker _picker = ImagePicker();
 
   bool _isSubmitting = false;
@@ -686,6 +689,38 @@ class _PermintaanHargaFormScreenState
       }
     }
     if (d.proNomor.isNotEmpty) _praOrderNomor = d.proNomor;
+
+    // Deteksi foto existing saat edit
+    final rawJson = d.rawJson ?? {};
+    final candidates = [
+      rawJson['gambar_1_url'],
+      rawJson['gambar1_url'],
+      rawJson['img1'],
+      rawJson['image1'],
+      rawJson['mh_gambar1'],
+      rawJson['gambar1'],
+      d.gambar1Url,
+      d.gambarUrl,
+    ];
+    for (final c in candidates) {
+      if (c != null && c.toString().trim().isNotEmpty) {
+        String res = c.toString().trim();
+        if (!res.startsWith('http://') && !res.startsWith('https://')) {
+          res = '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}/$res';
+        }
+        res = res
+            .replaceFirst(
+              'http://103.94.238.252:3005/image/mintaharga',
+              '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
+            )
+            .replaceFirst(
+              'http://103.94.238.252:8182/image/mintaharga',
+              '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
+            );
+        _existingImageUrl = '$res?t=${DateTime.now().millisecondsSinceEpoch}';
+        break;
+      }
+    }
 
     _hargaKalkulasi = (d.hargaKalkulasi > 0 ? d.hargaKalkulasi : d.kalRpSistem)
         .toInt();
@@ -1830,16 +1865,15 @@ class _PermintaanHargaFormScreenState
   // --- IMAGE PICKER ---
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await ImageCompressHelper.pickCompressedImage(
+      final res = await ImageCompressHelper.pickAndCompress(
         _picker,
         source: source,
       );
-      if (picked != null) {
-        final bytes = await picked.readAsBytes();
+      if (res != null) {
         setState(() {
-          _imageBytes = bytes;
-          _imageName = picked.name;
-          _imageSizeBytes = bytes.length;
+          _imageBytes = res.bytes;
+          _imageName = res.name;
+          _imageSizeBytes = res.bytes.length;
         });
         if (mounted) AppToast.success(context, 'Foto berhasil dipilih');
       }
@@ -2465,16 +2499,22 @@ class _PermintaanHargaFormScreenState
       }
     }
 
+    bool isImageUploadSuccess = true;
     if (isSuccess && _imageBytes != null && targetNomor.isNotEmpty) {
       try {
-        await repo.uploadImage(
+        final uploadedUrl = await repo.uploadImage(
           targetNomor,
           null,
           slot: 1,
           fileBytes: _imageBytes,
           fileName: _imageName,
         );
-      } catch (_) {}
+        if (uploadedUrl == null || uploadedUrl.isEmpty) {
+          isImageUploadSuccess = false;
+        }
+      } catch (_) {
+        isImageUploadSuccess = false;
+      }
     }
 
     if (mounted) {
@@ -2507,6 +2547,12 @@ class _PermintaanHargaFormScreenState
                               : 'Permintaan harga berhasil disimpan')));
 
         AppToast.success(context, successMessage);
+        if (!isImageUploadSuccess) {
+          AppToast.warning(
+            context,
+            'Data tersimpan, namun upload lampiran foto gagal. Anda dapat mengunggah ulang via menu Edit.',
+          );
+        }
         context.pop(true);
       } else {
         AppToast.error(
@@ -3237,6 +3283,34 @@ class _PermintaanHargaFormScreenState
                           style: TextStyle(
                             color: Color(0xFFEF4444),
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () async {
+                      final refresh = await context.push<bool>(
+                        '/permintaan-harga/tambah-customer',
+                      );
+                      if (refresh == true && _selectedCustomerKode.isNotEmpty) {
+                        _fetchCustomerHistory(_selectedCustomerKode);
+                      }
+                    },
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.person_add_alt_1_rounded,
+                          size: 14,
+                          color: Color(0xFF4F46E5),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          '+ Customer Baru',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF4F46E5),
                           ),
                         ),
                       ],
@@ -5292,6 +5366,8 @@ class _PermintaanHargaFormScreenState
             contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
         ),
+        const SizedBox(height: 16),
+        _buildPhotoUploadSection(),
       ],
     );
   }
@@ -7651,6 +7727,230 @@ class _PermintaanHargaFormScreenState
     );
   }
 
+  Widget _buildPhotoUploadSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Lampiran Foto Contoh Produk',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 2,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'Maks. 1 MB',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (_imageBytes != null)
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.memory(
+                  _imageBytes!,
+                  width: double.infinity,
+                  height: 140,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: () => setState(() => _imageBytes = null),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 6,
+                left: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${((_imageSizeBytes ?? 0) / 1024).toStringAsFixed(0)} KB (Siap Unggah)',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else if (_existingImageUrl != null && _existingImageUrl!.isNotEmpty)
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 140,
+                  child: WebSafeNetworkImage(
+                    imageUrl: _existingImageUrl!,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: () => setState(() => _existingImageUrl = null),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 6,
+                left: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Foto Terpasang (Ketuk tombol di bawah untuk ganti)',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else
+          Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      onPressed: () => _pickImage(ImageSource.camera),
+                      icon: const Icon(
+                        Icons.photo_camera_rounded,
+                        size: 16,
+                        color: Color(0xFF4F46E5),
+                      ),
+                      label: const Text(
+                        'Kamera',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF4F46E5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(
+                        Icons.photo_library_rounded,
+                        size: 16,
+                        color: Color(0xFF0284C7),
+                      ),
+                      label: const Text(
+                        'Galeri',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0284C7),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '* Unggah sample desain (Opsional)',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
   // --- STEP 3: REVIEW & PENGAJUAN WIDGET ---
   Widget _buildStep3Review() {
     final finalHarga = _toNumCurrency(_hargaMintaController.text);
@@ -7699,165 +7999,7 @@ class _PermintaanHargaFormScreenState
               const SizedBox(height: 14),
 
               // Lampiran Foto Contoh Produk (1 Slot)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Lampiran Foto Contoh Produk',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'Maks. 1 MB',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              if (_imageBytes != null)
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.memory(
-                        _imageBytes!,
-                        width: double.infinity,
-                        height: 140,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: GestureDetector(
-                        onTap: () => setState(() => _imageBytes = null),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            size: 14,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 6,
-                      left: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${((_imageSizeBytes ?? 0) / 1024).toStringAsFixed(0)} KB (Siap Unggah)',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            onPressed: () => _pickImage(ImageSource.camera),
-                            icon: const Icon(
-                              Icons.photo_camera_rounded,
-                              size: 16,
-                              color: Color(0xFF4F46E5),
-                            ),
-                            label: const Text(
-                              'Kamera',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF4F46E5),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            onPressed: () => _pickImage(ImageSource.gallery),
-                            icon: const Icon(
-                              Icons.photo_library_rounded,
-                              size: 16,
-                              color: Color(0xFF0284C7),
-                            ),
-                            label: const Text(
-                              'Galeri',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0284C7),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '* Unggah sample desain (Opsional)',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _buildPhotoUploadSection(),
               const Divider(height: 20),
 
               // Section Customer & Pekerjaan

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -42,8 +43,53 @@ class _TambahCustomerPermintaanHargaScreenState
 
   String _korporasi = 'N';
   bool _isLoading = false;
+  Timer? _debounceCekNama;
+  String? _duplicateNotice;
+  bool _isCheckingDuplicate = false;
+  List<Map<String, dynamic>> _similarCustomers = [];
+  String? _selectedSimilarKode;
 
   bool get _isEdit => widget.initialCustomer != null;
+
+  void _onNamaChanged(String val) {
+    _debounceCekNama?.cancel();
+    final query = val.trim();
+    if (query.length < 2) {
+      if (_duplicateNotice != null || _similarCustomers.isNotEmpty) {
+        setState(() {
+          _duplicateNotice = null;
+          _similarCustomers = [];
+          _selectedSimilarKode = null;
+        });
+      }
+      return;
+    }
+
+    _debounceCekNama = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) return;
+      setState(() => _isCheckingDuplicate = true);
+      final repo = ref.read(customerRepositoryProvider);
+      final res = await repo.cekCustomerNama(
+        query,
+        excludeKode: _isEdit ? widget.initialCustomer?.kode : null,
+      );
+      if (mounted) {
+        final rawMatches = res['matches'] as List<dynamic>? ?? [];
+        final matches = rawMatches
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
+        setState(() {
+          _isCheckingDuplicate = false;
+          _duplicateNotice = res['notice'] as String?;
+          _similarCustomers = matches;
+          _selectedSimilarKode =
+              matches.isNotEmpty ? matches.first['kode']?.toString() : null;
+        });
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -66,6 +112,7 @@ class _TambahCustomerPermintaanHargaScreenState
 
   @override
   void dispose() {
+    _debounceCekNama?.cancel();
     _kodeController.dispose();
     _namaController.dispose();
     _alamatController.dispose();
@@ -177,6 +224,10 @@ class _TambahCustomerPermintaanHargaScreenState
       setState(() => _isLoading = false);
 
       if (created != null) {
+        final notice = created['notice'] ?? _duplicateNotice;
+        if (notice != null && notice.toString().trim().isNotEmpty) {
+          AppToast.warning(context, notice.toString());
+        }
         AppToast.success(
           context,
           'Customer ${created['nama'] ?? payload['nama']} berhasil ditambahkan',
@@ -203,18 +254,241 @@ class _TambahCustomerPermintaanHargaScreenState
             final horizontalPadding = ResponsiveHelper.horizontalPadding(context);
             final maxFormWidth = ResponsiveHelper.formWidth(context);
 
-            Widget buildNamaField() => TextFormField(
-                  controller: _namaController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Customer *',
-                    prefixIcon: Icon(
-                      Icons.person_outline,
-                      size: 20,
-                      color: AppColors.muted,
+            Widget buildNamaField() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _namaController,
+                      onChanged: _onNamaChanged,
+                      decoration: InputDecoration(
+                        labelText: 'Nama Customer *',
+                        prefixIcon: const Icon(
+                          Icons.person_outline,
+                          size: 20,
+                          color: AppColors.muted,
+                        ),
+                        suffixIcon: _isCheckingDuplicate
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Nama wajib diisi' : null,
                     ),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Nama wajib diisi' : null,
+                    if (_similarCustomers.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 16,
+                                  color: Color(0xFFD97706),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Data customer serupa ditemukan',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFB45309),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFDE68A),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '${_similarCustomers.length} data',
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF92400E),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'similar_cust_${_similarCustomers.length}_${_similarCustomers.first['kode']}',
+                              ),
+                              initialValue: _selectedSimilarKode,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFFCD34D),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFFCD34D),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFD97706),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                              dropdownColor: Colors.white,
+                              items: _similarCustomers.map((cust) {
+                                final nama =
+                                    cust['nama']?.toString().trim() ?? '-';
+                                final alamat =
+                                    cust['alamat']?.toString().trim() ?? '';
+                                final kota =
+                                    cust['kota']?.toString().trim() ?? '';
+                                final kode =
+                                    cust['kode']?.toString().trim() ?? '-';
+
+                                final alamatLengkap = [
+                                  if (alamat.isNotEmpty) alamat,
+                                  if (kota.isNotEmpty) kota,
+                                ].join(', ');
+
+                                return DropdownMenuItem<String>(
+                                  value: kode,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              nama,
+                                              style: const TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 1.5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFEEF2FF),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              'Kode: $kode',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF4F46E5),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (alamatLengkap.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text(
+                                            alamatLengkap,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              selectedItemBuilder: (context) {
+                                return _similarCustomers.map((cust) {
+                                  final nama =
+                                      cust['nama']?.toString().trim() ?? '-';
+                                  final alamat =
+                                      cust['alamat']?.toString().trim() ?? '';
+                                  final kota =
+                                      cust['kota']?.toString().trim() ?? '';
+                                  final kode =
+                                      cust['kode']?.toString().trim() ?? '-';
+                                  final alamatText = [
+                                    if (alamat.isNotEmpty) alamat,
+                                    if (kota.isNotEmpty) kota,
+                                  ].join(', ');
+
+                                  final display = alamatText.isNotEmpty
+                                      ? '$nama - $alamatText (Kode: $kode)'
+                                      : '$nama (Kode: $kode)';
+
+                                  return Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      display,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                  );
+                                }).toList();
+                              },
+                              onChanged: (val) {
+                                setState(() {
+                                  _selectedSimilarKode = val;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 );
 
             Widget buildKotaField() => TextFormField(

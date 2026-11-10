@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_client.dart';
 import '../models/permintaan_harga_model.dart';
@@ -45,6 +46,23 @@ class PermintaanHargaRepository {
       return [];
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> createPermintaanHargaCustomer(
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final response = await _api.dio.post(
+        '/permintaan-harga/customer',
+        data: payload,
+      );
+      if (response.data != null && response.data['success'] == true) {
+        return (response.data['data'] as Map<String, dynamic>?) ?? payload;
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -149,24 +167,28 @@ class PermintaanHargaRepository {
     Uint8List? fileBytes,
     String? fileName,
   }) async {
+    final encodedNomor = Uri.encodeComponent(nomor);
+    final String resolvedFilename =
+        (fileName != null && fileName.trim().isNotEmpty)
+            ? fileName.trim()
+            : (file != null
+                ? file.path.split(RegExp(r'[/\\]')).last
+                : 'mh_${nomor}_$slot.jpg');
+    final String ext = resolvedFilename.contains('.')
+        ? resolvedFilename.split('.').last.toLowerCase()
+        : 'jpg';
+    final String subType = (ext == 'png') ? 'png' : 'jpeg';
+
+    final Uint8List bytes;
+    if (fileBytes != null) {
+      bytes = fileBytes;
+    } else if (file != null) {
+      bytes = await file.readAsBytes();
+    } else {
+      return null;
+    }
+
     try {
-      final encodedNomor = Uri.encodeComponent(nomor);
-      final String resolvedFilename = fileName ??
-          (file != null
-              ? file.path.split(RegExp(r'[/\\]')).last
-              : 'mh_${nomor}_$slot.jpg');
-      final String ext = resolvedFilename.split('.').last.toLowerCase();
-      final String subType = (ext == 'png') ? 'png' : 'jpeg';
-
-      final Uint8List bytes;
-      if (fileBytes != null) {
-        bytes = fileBytes;
-      } else if (file != null) {
-        bytes = await file.readAsBytes();
-      } else {
-        return null;
-      }
-
       final String base64Data =
           'data:image/$subType;base64,${base64Encode(bytes)}';
 
@@ -177,6 +199,28 @@ class PermintaanHargaRepository {
           'file_name': resolvedFilename,
           'file_type': 'image/$subType',
         },
+        options: Options(extra: {'skipDedupe': true}),
+      );
+      final url = response.data?['data']?['url']?.toString() ??
+          response.data?['data']?.toString();
+      if (url != null && url.isNotEmpty) return url;
+    } catch (e) {
+      // ignore: avoid_print
+      print('Gagal upload base64 permintaan harga $nomor slot $slot: $e');
+    }
+
+    // Fallback ke endpoint internal multipart (bypass blokir status DONE 409 di server lama)
+    try {
+      final multipartFile = MultipartFile.fromBytes(
+        bytes,
+        filename: resolvedFilename,
+        contentType: DioMediaType('image', subType),
+      );
+      final formData = FormData.fromMap({'file': multipartFile});
+      final response = await _api.dio.post(
+        '/permintaan-harga-internal/$encodedNomor/gambar/$slot',
+        data: formData,
+        options: Options(extra: {'skipDedupe': true}),
       );
       return response.data?['data']?['url']?.toString() ??
           response.data?['data']?.toString();

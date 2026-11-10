@@ -56,4 +56,56 @@ void main() {
       equals('data:image/png;base64,${base64Encode(dummyBytes)}'),
     );
   });
+
+  test('uploadImage falls back to internal multipart endpoint when base64 endpoint fails', () async {
+    final calls = <RequestOptions>[];
+    final apiClient = ApiClient();
+    apiClient.dio.interceptors.clear();
+    apiClient.dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          calls.add(options);
+          if (options.path.contains('/gambar-base64/')) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                response: Response(
+                  requestOptions: options,
+                  statusCode: 409,
+                  data: {'success': false, 'message': 'Upload gambar tidak diizinkan untuk status DONE'},
+                ),
+                type: DioExceptionType.badResponse,
+              ),
+            );
+          } else {
+            return handler.resolve(
+              Response(
+                requestOptions: options,
+                data: {
+                  'success': true,
+                  'data': {'url': 'http://example.com/internal-img.jpg'},
+                },
+              ),
+            );
+          }
+        },
+      ),
+    );
+
+    final repo = PermintaanHargaRepository(apiClient);
+    final dummyBytes = Uint8List.fromList([10, 20, 30]);
+    final url = await repo.uploadImage(
+      'MH.2026.0001',
+      null,
+      slot: 1,
+      fileBytes: dummyBytes,
+      fileName: 'fallback.jpg',
+    );
+
+    expect(url, equals('http://example.com/internal-img.jpg'));
+    expect(calls.length, equals(2));
+    expect(calls[0].path, equals('/permintaan-harga/MH.2026.0001/gambar-base64/1'));
+    expect(calls[1].path, equals('/permintaan-harga-internal/MH.2026.0001/gambar/1'));
+    expect(calls[1].data is FormData, isTrue);
+  });
 }

@@ -237,6 +237,32 @@ class _RekapCalonCustomerScreenState
                 ],
               ),
               const Divider(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4F46E5).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.edit_outlined,
+                    color: Color(0xFF4F46E5),
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  'Edit Data Customer',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final refresh = await context.push<Object?>(
+                    '/customer/edit',
+                    extra: customer,
+                  );
+                  if (refresh != null && refresh != false) _fetchCustomers();
+                },
+              ),
               if (customer.telp.isNotEmpty) ...[
                 ListTile(
                   leading: Container(
@@ -569,7 +595,45 @@ class _RekapCalonCustomerScreenState
                       ),
               ),
 
-
+              // 5. BOTTOM FIXED ACTION BAR
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Color.fromRGBO(15, 23, 42, 0.08)),
+                  ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00B4D8),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () async {
+                      final refresh = await context.push<Object?>(
+                        '/customer/tambah',
+                      );
+                      if (refresh != null && refresh != false) {
+                        _fetchCustomers();
+                      }
+                    },
+                    child: const Text(
+                      '+ Tambah',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
