@@ -2025,13 +2025,30 @@ const updatePermintaanHarga = async ({ nomor, body, user }) => {
         "NEGO",
         "BELUM DIVERIFIKASI",
         "BELUM_DIVERIFIKASI",
+        "DONE",
+        "SELESAI",
     ];
     if (!editableStatuses.includes(curStatus)) {
         return {
             status: 409,
             body: {
                 success: false,
-                message: `Status ${curStatus} tidak dapat diubah (hanya status BELUM, NEGO, atau BELUM DIVERIFIKASI yang dapat diedit)`,
+                message: `Status ${curStatus} tidak dapat diubah`,
+            },
+        };
+    }
+
+    // Validasi apakah sudah ditarik ke dalam transaksi penawaran
+    const [penawaranUsageRows] = await db.query(
+        `SELECT pend_pen_nomor FROM tpenawaran_dtl WHERE pend_minta = ? LIMIT 1`,
+        [nomor],
+    );
+    if (penawaranUsageRows && penawaranUsageRows.length > 0) {
+        return {
+            status: 409,
+            body: {
+                success: false,
+                message: `Permintaan harga tidak dapat diubah karena sudah digunakan dalam penawaran (${penawaranUsageRows[0].pend_pen_nomor})`,
             },
         };
     }

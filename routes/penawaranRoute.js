@@ -6,6 +6,7 @@ const auth = require("../middleware/auth");
 router.get("/penawaran", auth, penawaranController.getPenawaranList);
 router.get("/penawaran/:nomor", auth, penawaranController.getPenawaranDetail);
 router.post("/penawaran", auth, penawaranController.createPenawaran);
+router.put("/penawaran/:nomor", auth, penawaranController.updatePenawaran);
 router.put(
     "/penawaran/:nomor/status",
     auth,

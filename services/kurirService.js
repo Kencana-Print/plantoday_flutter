@@ -36,7 +36,7 @@ function mapKirimanRow(row) {
 async function findKirimanById(id) {
     const [rows] = await db.query(
         `SELECT ${KIRIMAN_SELECT_FIELDS}
-         FROM marketing.tkiriman
+         FROM ${process.env.DB_NAME_MAIN}.tkiriman
          WHERE id = ? LIMIT 1`,
         [id],
     );
@@ -74,13 +74,13 @@ const listPengiriman = async ({
     const offset = (page - 1) * limit;
 
     const [countRows] = await db.query(
-        `SELECT COUNT(*) AS total_items FROM marketing.tkiriman ${whereSql}`,
+        `SELECT COUNT(*) AS total_items FROM ${process.env.DB_NAME_MAIN}.tkiriman ${whereSql}`,
         params,
     );
 
     const [rows] = await db.query(
         `SELECT ${KIRIMAN_SELECT_FIELDS}
-         FROM marketing.tkiriman
+         FROM ${process.env.DB_NAME_MAIN}.tkiriman
          ${whereSql}
          ORDER BY IFNULL(tanggal_plan, tanggal) DESC, id DESC
          LIMIT ? OFFSET ?`,
@@ -131,13 +131,13 @@ const listByMode = async ({
     const offset = (page - 1) * limit;
 
     const [countRows] = await db.query(
-        `SELECT COUNT(*) AS total_items FROM marketing.tkiriman ${whereSql}`,
+        `SELECT COUNT(*) AS total_items FROM ${process.env.DB_NAME_MAIN}.tkiriman ${whereSql}`,
         params,
     );
 
     const [rows] = await db.query(
         `SELECT ${KIRIMAN_SELECT_FIELDS}
-         FROM marketing.tkiriman
+         FROM ${process.env.DB_NAME_MAIN}.tkiriman
          ${whereSql}
          ORDER BY ${orderBy}
          LIMIT ? OFFSET ?`,
@@ -160,12 +160,12 @@ const createPengiriman = async ({ payload, finalUser }) => {
         await conn.beginTransaction();
 
         const [[{ maxId }]] = await conn.query(
-            "SELECT IFNULL(MAX(id), 0) AS maxId FROM marketing.tkiriman",
+            `SELECT IFNULL(MAX(id), 0) AS maxId FROM ${process.env.DB_NAME_MAIN}.tkiriman`,
         );
         const newId = Number(maxId || 0) + 1;
 
         await conn.query(
-            `INSERT INTO marketing.tkiriman
+            `INSERT INTO ${process.env.DB_NAME_MAIN}.tkiriman
              (id, sender, receiver, latitude, longitude, note, catatan, realisasi, tanggal, tanggal_plan, jam, jam_plan, user)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, IFNULL(?, CURDATE()), IFNULL(?, CURDATE()), IFNULL(?, CURTIME()), IFNULL(?, CURTIME()), ?)`,
             [
@@ -198,7 +198,7 @@ const createPengiriman = async ({ payload, finalUser }) => {
 
 const updatePengiriman = async ({ id, payload, finalUser }) => {
     await db.query(
-        `UPDATE marketing.tkiriman
+        `UPDATE ${process.env.DB_NAME_MAIN}.tkiriman
          SET sender = ?, receiver = ?, latitude = ?, longitude = ?, note = ?, catatan = ?,
              realisasi = ?, tanggal = IFNULL(?, tanggal), tanggal_plan = IFNULL(?, tanggal_plan),
              jam = IFNULL(?, jam), jam_plan = IFNULL(?, jam_plan), user = ?
@@ -235,7 +235,7 @@ const updateStatus = async ({
 }) => {
     if (realisasi === "Y") {
         await db.query(
-            `UPDATE marketing.tkiriman
+            `UPDATE ${process.env.DB_NAME_MAIN}.tkiriman
              SET realisasi = ?,
                  tanggal = IFNULL(?, CURDATE()),
                  jam = IFNULL(?, CURTIME()),
@@ -247,7 +247,7 @@ const updateStatus = async ({
         );
     } else {
         await db.query(
-            "UPDATE marketing.tkiriman SET realisasi = ? WHERE id = ?",
+            `UPDATE ${process.env.DB_NAME_MAIN}.tkiriman SET realisasi = ? WHERE id = ?`,
             [realisasi, id],
         );
     }
@@ -257,7 +257,7 @@ const updateStatus = async ({
 };
 
 const updatePhoto = async ({ id, relativePath }) => {
-    await db.query("UPDATE marketing.tkiriman SET foto = ? WHERE id = ?", [
+    await db.query(`UPDATE ${process.env.DB_NAME_MAIN}.tkiriman SET foto = ? WHERE id = ?`, [
         relativePath,
         id,
     ]);
@@ -267,7 +267,7 @@ const updatePhoto = async ({ id, relativePath }) => {
 };
 
 const deleteById = async (id) => {
-    await db.query("DELETE FROM marketing.tkiriman WHERE id = ?", [id]);
+    await db.query(`DELETE FROM ${process.env.DB_NAME_MAIN}.tkiriman WHERE id = ?`, [id]);
     return { id, deleted: true };
 };
 

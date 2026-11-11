@@ -163,6 +163,44 @@ const createPenawaran = async (req, res) => {
     }
 };
 
+const updatePenawaran = async (req, res) => {
+    try {
+        const schemaReady = await handleSchemaCheck(res);
+        if (!schemaReady) return;
+
+        const nomor = String(req.params.nomor || "").trim();
+        if (!nomor) {
+            return res.status(400).json({
+                success: false,
+                message: "Nomor penawaran tidak valid",
+            });
+        }
+
+        const traceId =
+            String(
+                req.headers["x-request-id"] ||
+                    req.headers["x-idempotency-key"] ||
+                    req.body?.client_request_id ||
+                    `penawaran-update-${Date.now()}`,
+            ).trim() || `penawaran-update-${Date.now()}`;
+
+        const result = await penawaranService.updatePenawaran({
+            nomor,
+            traceId,
+            body: req.body || {},
+            loginUser: req.user || {},
+        });
+
+        return res.status(result.status).json(result.body);
+    } catch (err) {
+        console.error("UPDATE PENAWARAN ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: err.sqlMessage || err.message || "Gagal mengubah penawaran",
+        });
+    }
+};
+
 const getMasterPerusahaan = async (req, res) => {
     try {
         const schemaReady = await handleSchemaCheck(res);
@@ -526,6 +564,7 @@ module.exports = {
     getPenawaranList,
     getPenawaranDetail,
     createPenawaran,
+    updatePenawaran,
     getMasterPenawaranNomor,
     getMasterPermintaanHargaForPenawaran,
     getMasterPerusahaan,

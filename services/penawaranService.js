@@ -388,7 +388,7 @@ const getPermintaanCustomerMap = async (
 const getPermintaanUsageMap = async (
     conn,
     nomorList,
-    { forUpdate = false } = {},
+    { forUpdate = false, excludePenawaranNomor = "" } = {},
 ) => {
     if (!Array.isArray(nomorList) || nomorList.length === 0) {
         return new Map();
@@ -396,6 +396,11 @@ const getPermintaanUsageMap = async (
 
     const placeholders = buildInPlaceholders(nomorList);
     const lockSql = forUpdate ? " FOR UPDATE" : "";
+    const excludeSql = excludePenawaranNomor ? " AND d.pend_pen_nomor <> ?" : "";
+    const params = excludePenawaranNomor
+        ? [...nomorList, excludePenawaranNomor]
+        : nomorList;
+
     const [rows] = await conn.query(
         `
         SELECT
@@ -403,9 +408,10 @@ const getPermintaanUsageMap = async (
             COUNT(*) AS used_count
         FROM tpenawaran_dtl d
         WHERE COALESCE(d.pend_minta, '') IN (${placeholders})
+          ${excludeSql}
         GROUP BY d.pend_minta${lockSql}
         `,
-        nomorList,
+        params,
     );
 
     const usageMap = new Map();
@@ -2147,7 +2153,7 @@ const getPenawaranActivityLogs = async ({ nomor, user }) => {
             COALESCE(pin_alasan, '') AS pin_alasan
         FROM tspk_pin5
         WHERE pin_nomor = ?
-          AND pin_trs IN ('PENAWARAN', 'PENAWARAN_STATUS')
+          AND pin_trs IN ('PENAWARAN', 'PENAWARAN_STATUS', 'PENAWARAN_EDIT')
         ORDER BY pin_tgl_minta DESC, pin_urut DESC
         LIMIT 100
         `,
@@ -2158,6 +2164,16 @@ const getPenawaranActivityLogs = async ({ nomor, user }) => {
         const pinTrs = String(row.pin_trs || "")
             .trim()
             .toUpperCase();
+
+        if (pinTrs === "PENAWARAN_EDIT") {
+            return {
+                type: "EDIT",
+                created_at: row.pin_tgl_minta,
+                user: row.pin_user_minta || "",
+                keterangan: row.pin_ket || row.pin_alasan || "Perubahan konten transaksi penawaran",
+                changes: [],
+            };
+        }
 
         if (pinTrs === "PENAWARAN_STATUS") {
             let parsed = null;
@@ -2262,6 +2278,467 @@ const approvePenawaran = async ({ nomor, user }) => {
     }
 };
 
+const checkPenawaranHasMapOrSpk = async (conn, nomor) => {
+    try {
+        const [mapRows] = await conn.query(
+            `SELECT mspk_nomor FROM tmemospk WHERE mspk_pen_nomor = ? AND (mspk_aktif = 'Y' OR mspk_aktif IS NULL) LIMIT 1`,
+            [nomor],
+        );
+        if (mapRows && mapRows.length > 0) {
+            return { hasMap: true, refNumber: mapRows[0].mspk_nomor, type: "MAP" };
+        }
+    } catch (err) {
+        console.warn("[Penawaran][CheckMap][Warn]", err.message);
+    }
+
+    try {
+        const [spkRows] = await conn.query(
+            `SELECT spk_nomor FROM tspk WHERE spk_pen_nomor = ? AND (spk_aktif = 'Y' OR spk_aktif IS NULL) LIMIT 1`,
+            [nomor],
+        );
+        if (spkRows && spkRows.length > 0) {
+            return { hasMap: true, refNumber: spkRows[0].spk_nomor, type: "SPK" };
+        }
+    } catch (err) {
+        console.warn("[Penawaran][CheckSpk][Warn]", err.message);
+    }
+
+    return { hasMap: false };
+};
+
+const writeEditAuditLog = async ({ conn, nomor, user, detailCount }) => {
+    const pinTrs = "PENAWARAN_EDIT";
+    const pinUrut = await getNextPinUrut(conn, pinTrs, nomor);
+    const normalizedUser = String(user || "MOBILE").trim() || "MOBILE";
+    const userMinta = normalizedUser;
+
+    const hasPinProgram = await hasTableColumn(conn, "tspk_pin5", "pin_program");
+    const hasPinTglTrs = await hasTableColumn(conn, "tspk_pin5", "pin_tgl_trs");
+    const hasPinKet = await hasTableColumn(conn, "tspk_pin5", "pin_ket");
+    const hasPinTglMinta = await hasTableColumn(conn, "tspk_pin5", "pin_tgl_minta");
+    const hasPinUserMinta = await hasTableColumn(conn, "tspk_pin5", "pin_user_minta");
+    const hasPinAcc = await hasTableColumn(conn, "tspk_pin5", "pin_acc");
+    const hasPinDipakai = await hasTableColumn(conn, "tspk_pin5", "pin_dipakai");
+    const hasPinAlasan = await hasTableColumn(conn, "tspk_pin5", "pin_alasan");
+
+    const insertColumns = ["pin_trs", "pin_nomor", "pin_urut"];
+    const insertValues = [pinTrs, nomor, pinUrut];
+    const insertPlaceholders = ["?", "?", "?"];
+
+    if (hasPinProgram) {
+        insertColumns.push("pin_program");
+        insertValues.push("MOBILE");
+        insertPlaceholders.push("?");
+    }
+    if (hasPinTglTrs) {
+        insertColumns.push("pin_tgl_trs");
+        insertValues.push(new Date());
+        insertPlaceholders.push("?");
+    }
+    if (hasPinKet) {
+        insertColumns.push("pin_ket");
+        insertValues.push(limitText(`Edit transaksi penawaran (${detailCount} item)`, 120));
+        insertPlaceholders.push("?");
+    }
+    if (hasPinTglMinta) {
+        insertColumns.push("pin_tgl_minta");
+        insertPlaceholders.push("NOW()");
+    }
+    if (hasPinUserMinta) {
+        insertColumns.push("pin_user_minta");
+        insertValues.push(userMinta);
+        insertPlaceholders.push("?");
+    }
+    if (hasPinAcc) {
+        insertColumns.push("pin_acc");
+        insertValues.push("Y");
+        insertPlaceholders.push("?");
+    }
+    if (hasPinDipakai) {
+        insertColumns.push("pin_dipakai");
+        insertValues.push("Y");
+        insertPlaceholders.push("?");
+    }
+    if (hasPinAlasan) {
+        insertColumns.push("pin_alasan");
+        insertValues.push("Perubahan konten transaksi penawaran");
+        insertPlaceholders.push("?");
+    }
+
+    await conn.query(
+        `
+        INSERT INTO tspk_pin5 (${insertColumns.join(", ")})
+        VALUES (${insertPlaceholders.join(", ")})
+        `,
+        insertValues,
+    );
+};
+
+const updatePenawaran = async ({ nomor, traceId, body, loginUser }) => {
+    const cleanNomor = String(nomor || "").trim();
+    if (!cleanNomor) {
+        return {
+            status: 400,
+            body: { success: false, message: "Nomor penawaran tidak valid" },
+        };
+    }
+
+    const ownership = await assertPenawaranOwnership({
+        conn: db,
+        nomor: cleanNomor,
+        user: loginUser,
+    });
+    if (!ownership.allowed) {
+        return {
+            status: ownership.statusCode || 403,
+            body: {
+                success: false,
+                message: ownership.message || "Tidak berhak mengubah data penawaran ini",
+            },
+        };
+    }
+
+    let conn;
+    try {
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+
+        const [headerRows] = await conn.query(
+            `SELECT * FROM tpenawaran_hdr WHERE pen_nomor = ? FOR UPDATE`,
+            [cleanNomor],
+        );
+        if (!headerRows?.length) {
+            await conn.rollback();
+            return {
+                status: 404,
+                body: { success: false, message: "Penawaran tidak ditemukan" },
+            };
+        }
+        const existingHeader = headerRows[0];
+
+        // 1. Cek apakah sudah diproses menjadi MAP atau SPK
+        const mapCheck = await checkPenawaranHasMapOrSpk(conn, cleanNomor);
+        if (mapCheck.hasMap) {
+            await conn.rollback();
+            return {
+                status: 409,
+                body: {
+                    success: false,
+                    message: `Penawaran tidak dapat diedit karena sudah diproses menjadi ${mapCheck.type} (${mapCheck.refNumber})`,
+                },
+            };
+        }
+
+        // 2. Cek apakah penawaran sudah di-approve (pen_digitalsign = 'Y')
+        const digitalSign = String(existingHeader.pen_digitalsign || "")
+            .trim()
+            .toUpperCase();
+        if (digitalSign === "Y") {
+            await conn.rollback();
+            return {
+                status: 409,
+                body: {
+                    success: false,
+                    message: "Penawaran sudah disetujui (approve), tidak dapat diedit",
+                },
+            };
+        }
+
+        // 3. Cek status approval
+        const approvalState = await getLatestApprovalState(conn, cleanNomor);
+        if (approvalState === "WAIT") {
+            await conn.rollback();
+            return {
+                status: 409,
+                body: {
+                    success: false,
+                    message: "Penawaran sedang dalam proses approval (WAIT), tidak dapat diedit",
+                },
+            };
+        }
+
+        // 4. Sanitasi field header
+        const tanggal =
+            normalizeDate(body.tanggal) ||
+            normalizeDate(existingHeader.pen_tanggal);
+        const divisi = String(body.divisi || existingHeader.pen_divisi || "1").trim();
+        const tipe = String(body.tipe || existingHeader.pen_tipe || "Medium").trim();
+        const perusahaanKode = String(
+            body.perusahaan_kode || existingHeader.pen_perush_kode || "",
+        ).trim();
+        const customerKode = String(
+            body.customer_kode || existingHeader.pen_cus_kode || "",
+        ).trim();
+        let salesKode = String(
+            body.sales_kode || body.sal_kode || existingHeader.pen_sal_kode || "",
+        ).trim();
+
+        const up = String(body.up !== undefined ? body.up : existingHeader.pen_up || "");
+        const keterangan = String(
+            body.keterangan !== undefined ? body.keterangan : existingHeader.pen_keterangan || "",
+        ).trim();
+        const note = String(
+            body.note !== undefined ? body.note : existingHeader.pen_note || "",
+        ).trim();
+        const rekening = String(
+            body.rekening !== undefined ? body.rekening : existingHeader.pen_rekening || "",
+        ).trim();
+        const statusHarga = toNumber(
+            body.status_harga ??
+                body.statusHarga ??
+                (body.is_include_ppn ? 1 : existingHeader.pen_status_harga),
+            0,
+        );
+        const cetakTotal = toNumber(
+            body.cetak_total ?? body.cetakTotal ?? existingHeader.pen_cetaktotal,
+            1,
+        );
+
+        const incomingTtd = String(body.ttd || "").trim();
+        const incomingTtdJabatan = String(body.ttd_jabatan || "").trim();
+        const ttdFallback = await getTtdMappingByPerusahaanKode(conn, perusahaanKode);
+        const ttd = incomingTtd || existingHeader.pen_ttd || ttdFallback.ttd;
+        const ttdJabatan =
+            incomingTtdJabatan || existingHeader.pen_ttd_jabatan || ttdFallback.ttd_jabatan;
+
+        if (!tanggal || !perusahaanKode || !customerKode) {
+            await conn.rollback();
+            return {
+                status: 400,
+                body: {
+                    success: false,
+                    message: "Tanggal, perusahaan, dan customer wajib diisi",
+                },
+            };
+        }
+
+        // 4. Detail item validation & deduplication
+        const rawDetails = Array.isArray(body.details) ? body.details : [];
+        const dedupedDetails = [];
+        const detailSeen = new Set();
+        for (const d of rawDetails) {
+            const key = buildDetailDedupKey(d);
+            if (detailSeen.has(key)) continue;
+            detailSeen.add(key);
+            dedupedDetails.push(d);
+        }
+
+        if (dedupedDetails.length === 0) {
+            await conn.rollback();
+            return {
+                status: 400,
+                body: { success: false, message: "Detail item minimal 1 baris" },
+            };
+        }
+
+        for (let i = 0; i < dedupedDetails.length; i += 1) {
+            const d = dedupedDetails[i];
+            if (!String(d?.nama_barang || "").trim()) {
+                await conn.rollback();
+                return {
+                    status: 400,
+                    body: {
+                        success: false,
+                        message: `Nama barang baris ke-${i + 1} wajib diisi`,
+                    },
+                };
+            }
+            if (toNumber(d?.qty, 0) <= 0) {
+                await conn.rollback();
+                return {
+                    status: 400,
+                    body: {
+                        success: false,
+                        message: `Qty baris ke-${i + 1} harus lebih dari 0`,
+                    },
+                };
+            }
+        }
+
+        // 5. Validasi nomor permintaan harga jika ada
+        const requestedPermintaanNomor =
+            extractPermintaanNomorFromDetails(dedupedDetails);
+        if (requestedPermintaanNomor.length > 0) {
+            const permintaanStatusMap = await getPermintaanStatusMap(
+                conn,
+                requestedPermintaanNomor,
+                { forUpdate: true },
+            );
+            const permintaanUsageMap = await getPermintaanUsageMap(
+                conn,
+                requestedPermintaanNomor,
+                { forUpdate: true, excludePenawaranNomor: cleanNomor },
+            );
+            const permintaanCustomerMap = await getPermintaanCustomerMap(
+                conn,
+                requestedPermintaanNomor,
+                { forUpdate: true },
+            );
+
+            for (const noMh of requestedPermintaanNomor) {
+                const st = permintaanStatusMap.get(noMh);
+                const used = toNumber(permintaanUsageMap.get(noMh), 0);
+                if (!st || !isPermintaanStatusSelesai(st) || used > 0) {
+                    await conn.rollback();
+                    return {
+                        status: 409,
+                        body: {
+                            success: false,
+                            message: `No. Permintaan ${noMh} tidak valid atau sudah digunakan transaksi penawaran lain`,
+                        },
+                    };
+                }
+                const mhCus = permintaanCustomerMap.get(noMh);
+                if (String(mhCus?.customer_kode || "").trim() !== customerKode) {
+                    await conn.rollback();
+                    return {
+                        status: 409,
+                        body: {
+                            success: false,
+                            message: `Customer pada No. Permintaan ${noMh} tidak cocok dengan customer header transaksi`,
+                        },
+                    };
+                }
+            }
+        }
+
+        const authUserNama = String(
+            loginUser?.nama || loginUser?.id || "MOBILE",
+        ).trim();
+        const actor = authUserNama.slice(0, 10);
+
+        // 6. Update tpenawaran_hdr (timpa data dengan nomor lama yang sama)
+        await conn.query(
+            `
+            UPDATE tpenawaran_hdr
+            SET pen_divisi = ?,
+                pen_tanggal = ?,
+                pen_tipe = ?,
+                pen_perush_kode = ?,
+                pen_cus_kode = ?,
+                pen_sal_kode = ?,
+                pen_keterangan = ?,
+                pen_note = ?,
+                pen_rekening = ?,
+                pen_status_harga = ?,
+                pen_ttd = ?,
+                pen_ttd_jabatan = ?,
+                pen_up = ?,
+                pen_cetaktotal = ?,
+                pen_digitalsign = 'N',
+                pen_digitalsign_Date = NULL,
+                date_modified = NOW(),
+                user_modified = ?
+            WHERE pen_nomor = ?
+            `,
+            [
+                divisi,
+                tanggal,
+                tipe,
+                perusahaanKode,
+                customerKode,
+                salesKode,
+                keterangan,
+                note,
+                rekening,
+                statusHarga,
+                ttd,
+                ttdJabatan,
+                up,
+                cetakTotal,
+                actor,
+                cleanNomor,
+            ],
+        );
+
+        // 7. Replace tpenawaran_dtl (hapus lama, masukkan yang baru)
+        await conn.query(`DELETE FROM tpenawaran_dtl WHERE pend_pen_nomor = ?`, [
+            cleanNomor,
+        ]);
+
+        for (let i = 0; i < dedupedDetails.length; i += 1) {
+            const d = dedupedDetails[i] || {};
+            const urutan = i + 1;
+            const id = String(d.id || String(urutan).padStart(2, "0")).slice(0, 2);
+
+            await conn.query(
+                `
+                INSERT INTO tpenawaran_dtl (
+                    pend_urutan,
+                    pend_pen_nomor,
+                    pend_minta,
+                    pend_nama_barang,
+                    pend_bahan,
+                    pend_ukuran,
+                    pend_panjang,
+                    pend_lebar,
+                    pend_satuan,
+                    pend_qty,
+                    pend_harga,
+                    pend_gambar,
+                    pend_status,
+                    pend_batal,
+                    pend_confirm,
+                    pend_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
+                [
+                    urutan,
+                    cleanNomor,
+                    String(d.minta || "").trim(),
+                    String(d.nama_barang || "").trim(),
+                    String(d.bahan || "").trim(),
+                    String(d.ukuran || "").trim(),
+                    toNumber(d.panjang, 0),
+                    toNumber(d.lebar, 0),
+                    String(d.satuan || "PCS").trim() || "PCS",
+                    toNumber(d.qty, 0),
+                    toNumber(d.harga, 0),
+                    String(d.gambar || "").trim(),
+                    "",
+                    "",
+                    "",
+                    id,
+                ],
+            );
+        }
+
+        // 8. Catat audit log di tspk_pin5
+        await writeEditAuditLog({
+            conn,
+            nomor: cleanNomor,
+            user: actor,
+            detailCount: dedupedDetails.length,
+        });
+
+        await conn.commit();
+
+        return {
+            status: 200,
+            body: {
+                success: true,
+                message: "Penawaran berhasil diperbarui",
+                data: {
+                    nomor: cleanNomor,
+                    sales_kode: salesKode,
+                },
+            },
+        };
+    } catch (err) {
+        if (conn) await conn.rollback();
+        console.error("UPDATE PENAWARAN SERVICE ERROR:", err);
+        return {
+            status: 500,
+            body: {
+                success: false,
+                message: err.sqlMessage || err.message || "Gagal mengubah penawaran",
+            },
+        };
+    } finally {
+        if (conn) conn.release();
+    }
+};
+
 module.exports = {
     ensurePenawaranSchema,
     isManagerUser,
@@ -2272,6 +2749,7 @@ module.exports = {
     getPenawaranList,
     getPenawaranDetail,
     createPenawaran,
+    updatePenawaran,
     getMasterPerusahaan,
     getMasterCustomer,
     getMasterSales,
@@ -2283,4 +2761,6 @@ module.exports = {
     requestApprovalPerubahan,
     getPenawaranActivityLogs,
     approvePenawaran,
+    checkPenawaranHasMapOrSpk,
+    getPermintaanUsageMap,
 };
