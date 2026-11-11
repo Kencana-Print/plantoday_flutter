@@ -111,6 +111,17 @@ class InvoiceJatuhTempoSummary {
           .toList(),
     );
   }
+
+  /// Daftar nama sales unik yang terurut, mengabaikan string kosong dan label placeholder.
+  List<String> get availableSalesNames {
+    final list = bySales
+        .map((s) => s.salNama.trim())
+        .where((name) => name.isNotEmpty && name != '(Tanpa Sales)')
+        .toSet()
+        .toList()
+      ..sort();
+    return list;
+  }
 }
 
 class InvoiceJatuhTempoItem {
@@ -195,6 +206,17 @@ class InkasoSalesGroup {
     List<InvoiceJatuhTempoItem> list, {
     List<InvoiceJatuhTempoSalesSummary>? summaryBySales,
   }) {
+    // Pre-index summary untuk lookup O(1)
+    final summaryByName = <String, InvoiceJatuhTempoSalesSummary>{};
+    final summaryByKode = <String, InvoiceJatuhTempoSalesSummary>{};
+    if (summaryBySales != null) {
+      for (final s in summaryBySales) {
+        final nameKey = s.salNama.trim().toLowerCase();
+        if (nameKey.isNotEmpty) summaryByName[nameKey] = s;
+        if (s.salKode.isNotEmpty) summaryByKode[s.salKode] = s;
+      }
+    }
+
     final map = <String, List<InvoiceJatuhTempoItem>>{};
     for (final it in list) {
       final name = it.salNama.trim().isNotEmpty ? it.salNama.trim() : '(Tanpa Sales)';
@@ -211,16 +233,10 @@ class InkasoSalesGroup {
         sisa += it.sisa;
         if (kode.isEmpty && it.salKode.isNotEmpty) kode = it.salKode;
       }
-      if (summaryBySales != null) {
-        for (final s in summaryBySales) {
-          if (s.salNama.trim().toLowerCase() == entry.key.toLowerCase() ||
-              (kode.isNotEmpty && s.salKode == kode)) {
-            if (s.totalTerealisasi > real) {
-              real = s.totalTerealisasi;
-            }
-            break;
-          }
-        }
+      final s = summaryByName[entry.key.toLowerCase()] ??
+          (kode.isNotEmpty ? summaryByKode[kode] : null);
+      if (s != null && s.totalTerealisasi > real) {
+        real = s.totalTerealisasi;
       }
       return InkasoSalesGroup(
         salKode: kode,

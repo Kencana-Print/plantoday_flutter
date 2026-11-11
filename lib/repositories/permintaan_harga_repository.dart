@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_client.dart';
+import '../models/mutation_result.dart';
 import '../models/permintaan_harga_model.dart';
 import '../providers/auth_provider.dart';
 
@@ -104,16 +106,36 @@ class PermintaanHargaRepository {
     }
   }
 
-  Future<bool> updatePermintaanHarga(
+  Future<MutationResult> updatePermintaanHarga(
       String nomor, Map<String, dynamic> payload) async {
     try {
+      final encodedNomor = Uri.encodeComponent(nomor);
       final response = await _api.dio.put(
-        '/permintaan-harga/$nomor',
+        '/permintaan-harga/$encodedNomor',
         data: payload,
       );
-      return response.data != null && response.data['success'] == true;
-    } catch (_) {
-      return false;
+      final body = response.data;
+      if (body != null && body['success'] == true) {
+        return MutationResult.success(
+          message: body['message']?.toString() ?? 'Permintaan harga berhasil diperbarui',
+          nomor: nomor,
+        );
+      }
+      return MutationResult.failure(
+        message: body?['message']?.toString() ?? 'Gagal memperbarui permintaan harga',
+        nomor: nomor,
+      );
+    } on DioException catch (e) {
+      final errorData = e.response?.data;
+      String message = 'Gagal memperbarui permintaan harga';
+      if (errorData is Map && errorData['message'] != null) {
+        message = errorData['message'].toString();
+      } else if (e.message != null && e.message!.isNotEmpty) {
+        message = e.message!;
+      }
+      return MutationResult.failure(message: message, nomor: nomor);
+    } catch (e) {
+      return MutationResult.failure(message: e.toString(), nomor: nomor);
     }
   }
 

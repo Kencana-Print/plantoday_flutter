@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/asset_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_toast.dart';
+import '../../core/utils/format_helper.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/achievement_model.dart';
 import '../../models/customer_model.dart';
@@ -250,75 +251,99 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return list;
   }
 
-  void _showPotensiSalesPicker() {
-    final list = _availablePotensiSales;
-
+  void _showSalesFilterSheet({
+    required String title,
+    required List<String> salesList,
+    required String currentSelected,
+    required ValueChanged<String> onSelected,
+  }) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Pilih Sales (Potensi)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const Divider(height: 12),
-              ListTile(
-                title: const Text(
-                  'Semua Sales',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
                 ),
-                trailing: _selectedPotensiSales == 'ALL'
-                    ? const Icon(Icons.check, color: Color(0xFF4F46E5))
-                    : null,
-                onTap: () {
-                  setState(() => _selectedPotensiSales = 'ALL');
-                  Navigator.pop(ctx);
-                },
               ),
-              ...list.map((salesName) {
-                final isSelected =
-                    _selectedPotensiSales.toLowerCase() ==
-                    salesName.toLowerCase();
-                return ListTile(
-                  title: Text(
-                    salesName,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: Color(0xFF4F46E5))
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedPotensiSales = salesName);
-                    Navigator.pop(ctx);
-                  },
-                );
-              }),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ListTile(
+                      title: const Text(
+                        'Semua Sales',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      trailing: currentSelected == 'ALL'
+                          ? const Icon(Icons.check, color: Color(0xFF4F46E5))
+                          : null,
+                      onTap: () {
+                        onSelected('ALL');
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                    ...salesList.map((salesName) {
+                      final isSelected = currentSelected.toLowerCase() ==
+                          salesName.toLowerCase();
+                      return ListTile(
+                        title: Text(
+                          salesName,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check, color: Color(0xFF4F46E5))
+                            : null,
+                        onTap: () {
+                          onSelected(salesName);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    }),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  void _showPotensiSalesPicker() {
+    _showSalesFilterSheet(
+      title: 'Pilih Sales (Potensi)',
+      salesList: _availablePotensiSales,
+      currentSelected: _selectedPotensiSales,
+      onSelected: (val) => setState(() => _selectedPotensiSales = val),
     );
   }
 
@@ -344,92 +369,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   // Filtered Jatuh Tempo
   List<String> get _availableJatuhTempoSales {
+    final fromSummary = _invoiceJatuhTempoSummary?.availableSalesNames ?? const [];
+    if (fromSummary.isNotEmpty) return fromSummary;
     final set = <String>{};
-    if (_invoiceJatuhTempoSummary?.bySales != null) {
-      for (final s in _invoiceJatuhTempoSummary!.bySales) {
-        if (s.salNama.isNotEmpty && s.salNama != '(Tanpa Sales)') {
-          set.add(s.salNama.trim());
-        }
-      }
-    }
     for (final it in _rawInvoiceJatuhTempoItems) {
-      if (it.salNama.isNotEmpty && it.salNama != '(Tanpa Sales)') {
-        set.add(it.salNama.trim());
+      final name = it.salNama.trim();
+      if (name.isNotEmpty && name != '(Tanpa Sales)') {
+        set.add(name);
       }
     }
-    final list = set.toList()..sort();
-    return list;
+    return set.toList()..sort();
   }
 
   void _showJatuhTempoSalesPicker() {
-    final list = _availableJatuhTempoSales;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Pilih Sales (Jatuh Tempo)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const Divider(height: 12),
-              ListTile(
-                title: const Text(
-                  'Semua Sales',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: _selectedJatuhTempoSales == 'ALL'
-                    ? const Icon(Icons.check, color: Color(0xFF4F46E5))
-                    : null,
-                onTap: () {
-                  setState(() => _selectedJatuhTempoSales = 'ALL');
-                  Navigator.pop(ctx);
-                },
-              ),
-              ...list.map((salesName) {
-                final isSelected =
-                    _selectedJatuhTempoSales.toLowerCase() ==
-                    salesName.toLowerCase();
-                return ListTile(
-                  title: Text(
-                    salesName,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: Color(0xFF4F46E5))
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedJatuhTempoSales = salesName);
-                    Navigator.pop(ctx);
-                  },
-                );
-              }),
-            ],
-          ),
-        ),
-      ),
+    _showSalesFilterSheet(
+      title: 'Pilih Sales (Jatuh Tempo)',
+      salesList: _availableJatuhTempoSales,
+      currentSelected: _selectedJatuhTempoSales,
+      onSelected: (val) => setState(() => _selectedJatuhTempoSales = val),
     );
   }
 
@@ -441,14 +398,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       if (isManager && _selectedJatuhTempoSales != 'ALL') {
         final sal = it.salNama.toLowerCase().trim();
         final selected = _selectedJatuhTempoSales.toLowerCase().trim();
-        return sal == selected || sal.contains(selected) || selected.contains(sal);
+        return sal == selected;
       }
       return true;
     }).toList();
   }
-
-  double get _totalNominalJatuhTempo =>
-      _filteredJatuhTempoItems.fold(0.0, (acc, it) => acc + it.sisa);
 
   @override
   void initState() {
@@ -2669,13 +2623,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   // ── KARTU INVOICE JATUH TEMPO (OVERDUE / PROYEKSI INKASO)
   Widget _buildInvoiceJatuhTempoCard(NumberFormat currencyFormat) {
+    final user = ref.read(authProvider).user;
+    final isManager = user?.isManager ?? false;
+
     final filtered = _filteredJatuhTempoItems;
     final salesGroups = InkasoSalesGroup.groupItems(
       filtered,
       summaryBySales: _invoiceJatuhTempoSummary?.bySales,
     );
     final totalCount = filtered.length;
-    final totalSisa = _totalNominalJatuhTempo;
+    final totalSisa = filtered.fold<double>(0.0, (acc, it) => acc + it.sisa);
     final groupsRealisasi = salesGroups.fold<double>(
       0.0,
       (acc, g) => acc + g.totalTerealisasi,
@@ -2685,15 +2642,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             (_invoiceJatuhTempoSummary?.totalRealisasi ?? 0) > groupsRealisasi
         ? _invoiceJatuhTempoSummary!.totalRealisasi
         : groupsRealisasi;
-    final totalBatal = _invoiceJatuhTempoSummary?.totalBatal ?? 0.0;
-
-    String shortNum(double val) {
-      if (val >= 1e12) return '${(val / 1e12).toStringAsFixed(1)}T';
-      if (val >= 1e9) return '${(val / 1e9).toStringAsFixed(1)}M';
-      if (val >= 1e6) return '${(val / 1e6).toStringAsFixed(1)}Jt';
-      if (val >= 1e3) return '${(val / 1e3).toStringAsFixed(1)}Rb';
-      return val.toStringAsFixed(0);
-    }
+    final totalBatal = _selectedJatuhTempoSales == 'ALL'
+        ? (_invoiceJatuhTempoSummary?.totalBatal ?? 0.0)
+        : 0.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -2757,56 +2708,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  // Filter Sales (untuk role Manager)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _showJatuhTempoSalesPicker,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color.fromRGBO(15, 23, 42, 0.06),
+                  // Filter Sales (hanya untuk role Manager)
+                  if (isManager) ...[
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _showJatuhTempoSalesPicker,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Filter Sales',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
-                            ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color.fromRGBO(15, 23, 42, 0.06),
                           ),
-                          Row(
-                            children: [
-                              Text(
-                                _selectedJatuhTempoSales == 'ALL'
-                                    ? 'Semua Sales'
-                                    : _selectedJatuhTempoSales,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Filter Sales',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  _selectedJatuhTempoSales == 'ALL'
+                                      ? 'Semua Sales'
+                                      : _selectedJatuhTempoSales,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFEA580C),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.arrow_drop_down_rounded,
                                   color: Color(0xFFEA580C),
                                 ),
-                              ),
-                              const Icon(
-                                Icons.arrow_drop_down_rounded,
-                                color: Color(0xFFEA580C),
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ],
 
                   // 4 Metrik Manksi: Invoice Aktif, Sisa Tagihan, Terealisasi, Batal
                   Container(
@@ -2830,17 +2783,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         ),
                         _buildInkasoMiniStat(
                           'Sisa Tagihan',
-                          shortNum(totalSisa),
+                          FormatHelper.shortNum(totalSisa),
                           const Color(0xFFEA580C),
                         ),
                         _buildInkasoMiniStat(
                           'Terealisasi',
-                          shortNum(totalTerealisasi),
+                          FormatHelper.shortNum(totalTerealisasi),
                           const Color(0xFF10B981),
                         ),
                         _buildInkasoMiniStat(
                           'Batal',
-                          shortNum(totalBatal),
+                          FormatHelper.shortNum(totalBatal),
                           const Color(0xFF64748B),
                         ),
                       ],
@@ -2990,7 +2943,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                               ),
                                             ),
                                             Text(
-                                              'Sisa ${shortNum(grp.totalSisa)}',
+                                              'Sisa ${FormatHelper.shortNum(grp.totalSisa)}',
                                               style: const TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w800,
@@ -2999,7 +2952,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                             ),
                                             if (grp.totalTerealisasi > 0)
                                               Text(
-                                                'Terealisasi ${shortNum(grp.totalTerealisasi)}',
+                                                'Terealisasi ${FormatHelper.shortNum(grp.totalTerealisasi)}',
                                                 style: const TextStyle(
                                                   fontSize: 10.5,
                                                   fontWeight: FontWeight.w700,
@@ -3082,7 +3035,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                                 ),
                                                 if (invItem.terbayar > 0)
                                                   Text(
-                                                    'Real: ${shortNum(invItem.terbayar)}',
+                                                    'Real: ${FormatHelper.shortNum(invItem.terbayar)}',
                                                     style: const TextStyle(
                                                       fontSize: 9.5,
                                                       fontWeight:

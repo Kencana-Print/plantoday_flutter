@@ -490,6 +490,8 @@ class _PermintaanHargaDetailScreenState
       'NEGO',
       'BELUM DIVERIFIKASI',
       'BELUM_DIVERIFIKASI',
+      'DONE',
+      'SELESAI',
     ];
     if (!allowedStatuses.contains(status)) {
       return false;

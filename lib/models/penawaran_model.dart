@@ -180,6 +180,7 @@ class PenawaranHeader {
 class PenawaranDetailItem {
   final String id;
   final int urutan;
+  final String minta;
   final String namaBarang;
   final String bahan;
   final String ukuran;
@@ -196,6 +197,7 @@ class PenawaranDetailItem {
   const PenawaranDetailItem({
     required this.id,
     this.urutan = 0,
+    this.minta = '',
     required this.namaBarang,
     this.bahan = '',
     this.ukuran = '',
@@ -214,7 +216,10 @@ class PenawaranDetailItem {
     return PenawaranDetailItem(
       id: json['id']?.toString() ?? '',
       urutan: (json['urutan'] as num?)?.toInt() ?? 0,
-      namaBarang: json['nama_barang']?.toString() ?? '',
+      minta: json['minta']?.toString() ?? json['pend_minta']?.toString() ?? '',
+      namaBarang: json['namaBarang']?.toString() ??
+          json['nama_barang']?.toString() ??
+          '',
       bahan: json['bahan']?.toString() ?? '',
       ukuran: json['ukuran']?.toString() ?? '',
       panjang: (json['panjang'] as num?)?.toDouble() ?? 0.0,

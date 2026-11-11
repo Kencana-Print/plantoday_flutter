@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../models/achievement_model.dart';
 import '../models/customer_model.dart';
 import '../models/kurir_model.dart';
+import '../models/penawaran_model.dart';
 import '../models/permintaan_harga_model.dart';
 import '../models/visit_model.dart';
 import '../providers/auth_provider.dart';
@@ -227,6 +228,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'create',
             name: 'create-penawaran',
             builder: (context, state) => const PenawaranCreateScreen(),
+          ),
+          GoRoute(
+            path: 'edit',
+            name: 'edit-penawaran',
+            builder: (context, state) {
+              final extra = state.extra as PenawaranDetailData?;
+              return PenawaranCreateScreen(initialDetail: extra);
+            },
           ),
           GoRoute(
             path: 'cari-sales',

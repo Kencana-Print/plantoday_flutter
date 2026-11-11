@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_client.dart';
 import '../models/invoice_jatuh_tempo_model.dart';
@@ -53,7 +54,8 @@ class InvoiceJatuhTempoRepository {
         );
       }
       return const InvoiceJatuhTempoResult();
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[InvoiceJatuhTempoRepository] Error fetching invoices: $e\n$st');
       return const InvoiceJatuhTempoResult();
     }
   }

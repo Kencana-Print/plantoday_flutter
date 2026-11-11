@@ -475,6 +475,8 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
     );
     final header = _header;
     final isSigned = header?.isApproved ?? false;
+    final canEdit =
+        header != null && !isSigned && header.approvalState.trim().toUpperCase() != 'WAIT';
 
     final user = ref.watch(authProvider).user;
     final isManager = user?.isManager ?? false;
@@ -548,9 +550,43 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(
-                      width: 38,
-                    ), // headerSpacer simetris React Native
+                    if (canEdit)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          final refresh = await context.push<bool>(
+                            '/penawaran/edit',
+                            extra: PenawaranDetailData(
+                              header: header,
+                              details: _details,
+                            ),
+                          );
+                          if (refresh == true) {
+                            _fetchDetail();
+                          }
+                        },
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4F46E5).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF4F46E5).withValues(alpha: 0.2),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.edit_rounded,
+                            size: 18,
+                            color: Color(0xFF4F46E5),
+                          ),
+                        ),
+                      )
+                    else
+                      const SizedBox(
+                        width: 38,
+                      ),
                   ],
                 ),
               ),

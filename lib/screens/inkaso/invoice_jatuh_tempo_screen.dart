@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/format_helper.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/invoice_jatuh_tempo_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/invoice_jatuh_tempo_repository.dart';
-import '../../repositories/penawaran_repository.dart';
 import '../../widgets/app_reload_button.dart';
 
 class InvoiceJatuhTempoScreen extends ConsumerStatefulWidget {
@@ -27,8 +27,9 @@ class _InvoiceJatuhTempoScreenState
   List<InvoiceJatuhTempoItem> _items = [];
 
   String _selectedSales = '';
-  List<String> _salesList = [];
+  List<String> _cachedSalesList = [];
   final Set<String> _expandedSales = <String>{};
+  final Map<String, int> _itemsLimitPerSales = <String, int>{};
 
   final _currencyFormat = NumberFormat.currency(
     locale: 'id_ID',
@@ -36,22 +37,10 @@ class _InvoiceJatuhTempoScreenState
     decimalDigits: 0,
   );
 
-  String _shortNum(double val) {
-    if (val >= 1e12) return '${(val / 1e12).toStringAsFixed(1)}T';
-    if (val >= 1e9) return '${(val / 1e9).toStringAsFixed(1)}M';
-    if (val >= 1e6) return '${(val / 1e6).toStringAsFixed(1)}Jt';
-    if (val >= 1e3) return '${(val / 1e3).toStringAsFixed(1)}Rb';
-    return val.toStringAsFixed(0);
-  }
-
   @override
   void initState() {
     super.initState();
     _fetchData();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final user = ref.read(authProvider).user;
-      if (user?.isManager == true) _loadSalesList();
-    });
   }
 
   @override
@@ -60,38 +49,31 @@ class _InvoiceJatuhTempoScreenState
     super.dispose();
   }
 
-  Future<void> _loadSalesList() async {
-    try {
-      final repo = ref.read(penawaranRepositoryProvider);
-      final rows = await repo.getMasterSales('');
-      final set = rows
-          .map((e) => e['nama'] ?? '')
-          .where((n) => n.isNotEmpty)
-          .toSet();
-
-      if (_summary?.bySales != null) {
-        for (final s in _summary!.bySales) {
-          if (s.salNama.isNotEmpty && s.salNama != '(Tanpa Sales)') {
-            set.add(s.salNama.trim());
-          }
-        }
+  List<String> get _salesList {
+    if (_cachedSalesList.isNotEmpty) return _cachedSalesList;
+    final fromSummary = _summary?.availableSalesNames ?? const [];
+    if (fromSummary.isNotEmpty) {
+      _cachedSalesList = fromSummary;
+      return _cachedSalesList;
+    }
+    final set = <String>{};
+    for (final it in _items) {
+      final name = it.salNama.trim();
+      if (name.isNotEmpty && name != '(Tanpa Sales)') {
+        set.add(name);
       }
-
-      if (mounted) {
-        setState(() {
-          _salesList = set.toList()..sort();
-        });
-      }
-    } catch (_) {}
+    }
+    final list = set.toList()..sort();
+    if (list.isNotEmpty) _cachedSalesList = list;
+    return list;
   }
 
-  Future<void> _fetchData([String? query]) async {
+  Future<void> _fetchData() async {
     setState(() => _isLoading = true);
 
     final repo = ref.read(invoiceJatuhTempoRepositoryProvider);
     final result = await repo.getInvoiceJatuhTempo(
       sales: _selectedSales.isNotEmpty ? _selectedSales : null,
-      search: query ?? _searchController.text.trim(),
     );
 
     if (mounted) {
@@ -100,20 +82,19 @@ class _InvoiceJatuhTempoScreenState
         _items = result.items;
         _isLoading = false;
 
-        if (result.summary?.bySales != null) {
-          final set = Set<String>.from(_salesList);
-          for (final s in result.summary!.bySales) {
-            if (s.salNama.isNotEmpty && s.salNama != '(Tanpa Sales)') {
-              set.add(s.salNama.trim());
-            }
+        if (_selectedSales.isEmpty) {
+          final names = result.summary?.availableSalesNames ?? const [];
+          if (names.isNotEmpty) {
+            _cachedSalesList = names;
           }
-          _salesList = set.toList()..sort();
         }
 
         // Otomatis buka grup pertama jika belum ada yang dibuka
-        final groups = InkasoSalesGroup.groupItems(_items);
-        if (_expandedSales.isEmpty && groups.isNotEmpty) {
-          _expandedSales.add(groups.first.salNama);
+        if (_expandedSales.isEmpty && _items.isNotEmpty) {
+          final firstSales = _items.first.salNama.trim().isNotEmpty
+              ? _items.first.salNama.trim()
+              : '(Tanpa Sales)';
+          _expandedSales.add(firstSales);
         }
       });
     }
@@ -287,7 +268,9 @@ class _InvoiceJatuhTempoScreenState
         !isSearching && (_summary?.totalRealisasi ?? 0) > groupsRealisasi
         ? _summary!.totalRealisasi
         : groupsRealisasi;
-    final totalBatal = _summary?.totalBatal ?? 0.0;
+    final totalBatal = (_selectedSales.isEmpty && !isSearching)
+        ? (_summary?.totalBatal ?? 0.0)
+        : 0.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FF),
@@ -411,14 +394,14 @@ class _InvoiceJatuhTempoScreenState
                               _buildVerticalDivider(),
                               _buildKpiStat(
                                 label: 'Sisa Tagihan',
-                                value: _shortNum(totalSisa),
+                                value: FormatHelper.shortNum(totalSisa),
                                 subValue: _currencyFormat.format(totalSisa),
                                 valueColor: const Color(0xFFEA580C),
                               ),
                               _buildVerticalDivider(),
                               _buildKpiStat(
                                 label: 'Terealisasi',
-                                value: _shortNum(totalTerealisasi),
+                                value: FormatHelper.shortNum(totalTerealisasi),
                                 subValue: _currencyFormat.format(
                                   totalTerealisasi,
                                 ),
@@ -427,7 +410,7 @@ class _InvoiceJatuhTempoScreenState
                               _buildVerticalDivider(),
                               _buildKpiStat(
                                 label: 'Batal',
-                                value: _shortNum(totalBatal),
+                                value: FormatHelper.shortNum(totalBatal),
                                 subValue: _currencyFormat.format(totalBatal),
                                 valueColor: const Color(0xFF64748B),
                               ),
@@ -499,7 +482,7 @@ class _InvoiceJatuhTempoScreenState
                                           contentPadding: EdgeInsets.zero,
                                         ),
                                         onChanged: (_) => setState(() {}),
-                                        onSubmitted: (q) => _fetchData(q),
+                                        onSubmitted: (_) => setState(() {}),
                                       ),
                                     ),
                                     if (_searchController.text.isNotEmpty)
@@ -507,7 +490,7 @@ class _InvoiceJatuhTempoScreenState
                                         behavior: HitTestBehavior.opaque,
                                         onTap: () {
                                           _searchController.clear();
-                                          _fetchData('');
+                                          setState(() {});
                                         },
                                         child: const Icon(
                                           Icons.close_rounded,
@@ -752,7 +735,7 @@ class _InvoiceJatuhTempoScreenState
                           ),
                         ),
                         Text(
-                          'Sisa ${_shortNum(grp.totalSisa)}',
+                          'Sisa ${FormatHelper.shortNum(grp.totalSisa)}',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -761,7 +744,7 @@ class _InvoiceJatuhTempoScreenState
                         ),
                         if (grp.totalTerealisasi > 0)
                           Text(
-                            'Terealisasi ${_shortNum(grp.totalTerealisasi)}',
+                            'Terealisasi ${FormatHelper.shortNum(grp.totalTerealisasi)}',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -786,24 +769,30 @@ class _InvoiceJatuhTempoScreenState
           // Detail Inkaso milik Sales ini
           if (isExpanded) ...[
             const Divider(height: 1, color: Color(0xFFE2E8F0)),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: grp.items.map((item) {
-                  final color = _agingColor(item.terlambatHari);
-                  final bg = _agingBg(item.terlambatHari);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color.fromRGBO(15, 23, 42, 0.06),
-                        ),
-                      ),
-                      child: Column(
+            Builder(builder: (context) {
+              final limit = _itemsLimitPerSales[grp.salNama] ?? 50;
+              final displayItems = grp.items.take(limit).toList();
+              final hasMore = grp.items.length > limit;
+
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    ...displayItems.map((item) {
+                      final color = _agingColor(item.terlambatHari);
+                      final bg = _agingBg(item.terlambatHari);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color.fromRGBO(15, 23, 42, 0.06),
+                            ),
+                          ),
+                          child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
@@ -923,9 +912,34 @@ class _InvoiceJatuhTempoScreenState
                       ),
                     ),
                   );
-                }).toList(),
-              ),
-            ),
+                    }),
+                    if (hasMore)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 4),
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _itemsLimitPerSales[grp.salNama] = limit + 50;
+                            });
+                          },
+                          icon: const Icon(Icons.expand_more_rounded, size: 18),
+                          label: Text(
+                            'Tampilkan 50 invoice lagi (${grp.items.length - limit} tersisa)',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF4F46E5),
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }),
           ],
         ],
       ),

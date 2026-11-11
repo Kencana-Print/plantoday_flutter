@@ -1,5 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/network/api_client.dart';
+import '../models/mutation_result.dart';
 import '../models/penawaran_model.dart';
 import '../providers/auth_provider.dart';
 
@@ -118,6 +120,41 @@ class PenawaranRepository {
       return null;
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<MutationResult> updatePenawaran(
+    String nomor,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final encodedNomor = Uri.encodeComponent(nomor);
+      final response = await _api.dio.put(
+        '/penawaran/$encodedNomor',
+        data: payload,
+      );
+      final body = response.data;
+      if (body != null && body['success'] == true) {
+        return MutationResult.success(
+          message: body['message']?.toString() ?? 'Penawaran berhasil diperbarui',
+          nomor: body['data']?['nomor']?.toString() ?? nomor,
+        );
+      }
+      return MutationResult.failure(
+        message: body?['message']?.toString() ?? 'Gagal memperbarui penawaran',
+        nomor: nomor,
+      );
+    } on DioException catch (e) {
+      final errorData = e.response?.data;
+      String message = 'Gagal memperbarui penawaran';
+      if (errorData is Map && errorData['message'] != null) {
+        message = errorData['message'].toString();
+      } else if (e.message != null && e.message!.isNotEmpty) {
+        message = e.message!;
+      }
+      return MutationResult.failure(message: message, nomor: nomor);
+    } catch (e) {
+      return MutationResult.failure(message: e.toString(), nomor: nomor);
     }
   }
 

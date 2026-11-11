@@ -73,6 +73,9 @@ class AuthNotifier extends Notifier<AuthState> {
     _storage = ref.read(tokenStorageProvider);
     _api = ref.read(apiClientProvider);
     _api.onUnauthorized = _expireSession;
+    ref.onDispose(() {
+      _api.onUnauthorized = null;
+    });
     _restoreSession();
     return const AuthState(isLoading: true);
   }
@@ -80,6 +83,8 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _restoreSession() async {
     final token = await _storage.getToken();
     final user = await _storage.getUser();
+
+    if (state.sessionExpired) return;
 
     if (token != null && user != null) {
       if (isJwtExpired(token)) {
@@ -94,9 +99,9 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> _expireSession() async {
-    if (!state.isAuthenticated) return; // beberapa request 401 paralel → cukup sekali
-    state = const AuthState(isLoading: false, sessionExpired: true);
+    if (state.sessionExpired) return;
     await _storage.clearSession();
+    state = const AuthState(isLoading: false, sessionExpired: true);
   }
 
   Future<bool> login(

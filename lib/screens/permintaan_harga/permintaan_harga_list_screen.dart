@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/permintaan_harga_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../repositories/permintaan_harga_repository.dart';
 import '../../widgets/app_date_range_picker_modal.dart';
 import '../../widgets/app_reload_button.dart';
@@ -332,6 +334,58 @@ class _PermintaanHargaListScreenState
         _list = results;
         _isLoading = false;
       });
+    }
+  }
+
+  bool _canEdit(PermintaanHargaItem item) {
+    final status = item.status.trim().toUpperCase();
+    const allowed = [
+      'BELUM',
+      'NEGO',
+      'BELUM DIVERIFIKASI',
+      'BELUM_DIVERIFIKASI',
+      'DONE',
+      'SELESAI',
+    ];
+    if (!allowed.contains(status)) return false;
+
+    final user = ref.read(authProvider).user;
+    if (user == null) return false;
+    if (user.isManager) return true;
+
+    if (item.userCreate.isNotEmpty &&
+        item.userCreate.trim().toUpperCase() == user.nama.trim().toUpperCase()) {
+      return true;
+    }
+    return true;
+  }
+
+  Future<void> _handleEdit(PermintaanHargaItem item) async {
+    final repo = ref.read(permintaanHargaRepositoryProvider);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
+      ),
+    );
+
+    final detail = await repo.getDetail(item.nomor);
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (detail == null) {
+      AppToast.error(context, 'Gagal memuat rincian permintaan harga');
+      return;
+    }
+
+    final refresh = await context.push<bool>(
+      '/permintaan-harga/edit',
+      extra: detail,
+    );
+
+    if (refresh == true && mounted) {
+      _fetchList();
     }
   }
 
@@ -828,8 +882,8 @@ class _PermintaanHargaListScreenState
                                             crossAxisSpacing: 12,
                                             mainAxisSpacing: 12,
                                             childAspectRatio: isDesktop
-                                                ? 1.55
-                                                : 1.42,
+                                                ? 1.45
+                                                : 1.32,
                                           ),
                                       itemCount: _list.length,
                                       itemBuilder: (context, index) {
@@ -843,6 +897,9 @@ class _PermintaanHargaListScreenState
                                             );
                                             _fetchList();
                                           },
+                                          onEdit: _canEdit(item)
+                                              ? () => _handleEdit(item)
+                                              : null,
                                         );
                                       },
                                     )
@@ -865,6 +922,9 @@ class _PermintaanHargaListScreenState
                                             );
                                             _fetchList();
                                           },
+                                          onEdit: _canEdit(item)
+                                              ? () => _handleEdit(item)
+                                              : null,
                                         );
                                       },
                                     ),
@@ -1089,11 +1149,13 @@ class _PermintaanHargaCard extends StatelessWidget {
   final PermintaanHargaItem item;
   final NumberFormat currencyFormat;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
 
   const _PermintaanHargaCard({
     required this.item,
     required this.currencyFormat,
     required this.onTap,
+    this.onEdit,
   });
 
   @override
@@ -1234,15 +1296,59 @@ class _PermintaanHargaCard extends StatelessWidget {
                   currencyFormat: currencyFormat,
                 ),
 
-                // 7. Tap untuk lihat detail
-                const SizedBox(height: 6),
-                const Text(
-                  'Tap untuk lihat detail',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
+                // 7. Footer: Tap info & Tombol Edit
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Tap untuk lihat detail',
+                      style: TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                    if (onEdit != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onEdit,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF2FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFFC7D2FE),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.edit_rounded,
+                                size: 12,
+                                color: Color(0xFF4F46E5),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Edit',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF4F46E5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

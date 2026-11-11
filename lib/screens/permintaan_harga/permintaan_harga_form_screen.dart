@@ -2453,9 +2453,14 @@ class _PermintaanHargaFormScreenState
 
     bool isSuccess = false;
     String targetNomor = widget.initialDetail?.nomor ?? '';
+    String? errorMessage;
 
     if (_isEditMode) {
-      isSuccess = await repo.updatePermintaanHarga(targetNomor, payload);
+      final res = await repo.updatePermintaanHarga(targetNomor, payload);
+      isSuccess = res.success;
+      if (!isSuccess) {
+        errorMessage = res.message;
+      }
     } else {
       final res = await repo.createPermintaanHarga(payload);
       if (res != null) {
@@ -2511,7 +2516,8 @@ class _PermintaanHargaFormScreenState
       } else {
         AppToast.error(
           context,
-          'Gagal menyimpan permintaan harga. Silakan periksa koneksi Anda.',
+          errorMessage ??
+              'Gagal menyimpan permintaan harga. Silakan periksa koneksi Anda.',
         );
       }
     }

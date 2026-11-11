@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/penawaran_model.dart';
 import '../../providers/auth_provider.dart';
@@ -111,6 +112,41 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
         _penawaranList = results;
         _isLoading = false;
       });
+    }
+  }
+
+  bool _canEdit(PenawaranListItem item) {
+    if (item.isApproved) return false;
+    if (item.approvalState.trim().toUpperCase() == 'WAIT') return false;
+    return true;
+  }
+
+  Future<void> _handleEdit(PenawaranListItem item) async {
+    final repo = ref.read(penawaranRepositoryProvider);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
+      ),
+    );
+
+    final detail = await repo.getPenawaranDetail(item.nomor);
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (detail == null) {
+      AppToast.error(context, 'Gagal memuat rincian penawaran');
+      return;
+    }
+
+    final refresh = await context.push<bool>(
+      '/penawaran/edit',
+      extra: detail,
+    );
+
+    if (refresh == true && mounted) {
+      _fetchPenawaran();
     }
   }
 
@@ -822,6 +858,7 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
                                       itemCount: filteredList.length,
                                       itemBuilder: (context, index) {
                                         final item = filteredList[index];
+                                        final canEdit = _canEdit(item);
                                         return _PenawaranCard(
                                           item: item,
                                           currencyFormat: currencyFormat,
@@ -835,6 +872,9 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
                                             );
                                             _fetchPenawaran();
                                           },
+                                          onEdit: canEdit
+                                              ? () => _handleEdit(item)
+                                              : null,
                                         );
                                       },
                                     )
@@ -848,6 +888,7 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
                                           const SizedBox(height: 10),
                                       itemBuilder: (context, index) {
                                         final item = filteredList[index];
+                                        final canEdit = _canEdit(item);
                                         return _PenawaranCard(
                                           item: item,
                                           currencyFormat: currencyFormat,
@@ -861,6 +902,9 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
                                             );
                                             _fetchPenawaran();
                                           },
+                                          onEdit: canEdit
+                                              ? () => _handleEdit(item)
+                                              : null,
                                         );
                                       },
                                     ),
@@ -943,12 +987,14 @@ class _PenawaranCard extends StatelessWidget {
   final NumberFormat currencyFormat;
   final String formattedDate;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
 
   const _PenawaranCard({
     required this.item,
     required this.currencyFormat,
     required this.formattedDate,
     required this.onTap,
+    this.onEdit,
   });
 
   @override
@@ -1084,10 +1130,50 @@ class _PenawaranCard extends StatelessWidget {
                   color: Color(0xFF4F46E5),
                 ),
               ),
-              const Row(
+              Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  if (onEdit != null) ...[
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onEdit,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFC7D2FE),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.edit_rounded,
+                              size: 12,
+                              color: Color(0xFF4F46E5),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Edit',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF4F46E5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  const Text(
                     'Lihat detail',
                     style: TextStyle(
                       fontSize: 11,
@@ -1095,8 +1181,8 @@ class _PenawaranCard extends StatelessWidget {
                       color: Color(0xFF94A3B8),
                     ),
                   ),
-                  SizedBox(width: 2),
-                  Icon(
+                  const SizedBox(width: 2),
+                  const Icon(
                     Icons.chevron_right_rounded,
                     size: 14,
                     color: Color(0xFF94A3B8),

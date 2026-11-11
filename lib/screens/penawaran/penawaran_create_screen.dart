@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/customer_model.dart';
+import '../../models/penawaran_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/penawaran_repository.dart';
 import '../../widgets/customer_picker_modal.dart';
@@ -53,7 +54,9 @@ class DraftDetailItem {
 }
 
 class PenawaranCreateScreen extends ConsumerStatefulWidget {
-  const PenawaranCreateScreen({super.key});
+  final PenawaranDetailData? initialDetail;
+
+  const PenawaranCreateScreen({super.key, this.initialDetail});
 
   @override
   ConsumerState<PenawaranCreateScreen> createState() =>
@@ -62,6 +65,8 @@ class PenawaranCreateScreen extends ConsumerStatefulWidget {
 
 class _PenawaranCreateScreenState extends ConsumerState<PenawaranCreateScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  bool get _isEditMode => widget.initialDetail != null;
 
   DateTime _selectedDate = DateTime.now();
   String? _selectedDivisi;
@@ -122,10 +127,70 @@ class _PenawaranCreateScreenState extends ConsumerState<PenawaranCreateScreen> {
   void initState() {
     super.initState();
     final user = ref.read(authProvider).user;
-    _selectedSalesKode = user?.salesKode ?? user?.kode ?? '';
-    _selectedSalesNama = user?.nama ?? '';
+    final initial = widget.initialDetail;
 
-    _items.add(DraftDetailItem());
+    if (initial != null && initial.header != null) {
+      final h = initial.header!;
+      try {
+        if (h.tanggal.isNotEmpty) {
+          final clean = h.tanggal.split('T')[0].split(' ')[0];
+          _selectedDate = DateTime.tryParse(clean) ?? DateTime.now();
+        }
+      } catch (_) {
+        _selectedDate = DateTime.now();
+      }
+
+      _selectedDivisi = h.divisi.isNotEmpty ? h.divisi : null;
+      _selectedTipe = h.tipe.isNotEmpty ? h.tipe : null;
+      _selectedPerusahaanKode =
+          h.perusahaanKode.isNotEmpty ? h.perusahaanKode : null;
+
+      if (h.customerKode.isNotEmpty || h.customer.isNotEmpty) {
+        _selectedCustomer = CustomerModel(
+          kode: h.customerKode,
+          nama: h.customer,
+          alamat: h.customerAlamat,
+          kota: h.customerKota,
+        );
+      }
+
+      _selectedSalesKode = h.salesKode.isNotEmpty
+          ? h.salesKode
+          : (user?.salesKode ?? user?.kode ?? '');
+      _selectedSalesNama =
+          h.sales.isNotEmpty ? h.sales : (user?.nama ?? '');
+
+      _upController.text = h.up;
+      _ttdController.text = h.ttd;
+      _ttdJabatanController.text = h.ttdJabatan;
+      _keteranganController.text = h.keterangan;
+      _noteController.text = h.note;
+      _statusHarga = h.statusHarga;
+
+      if (initial.details.isNotEmpty) {
+        for (final d in initial.details) {
+          final it = DraftDetailItem();
+          it.namaBarangController.text = d.namaBarang;
+          it.bahanController.text = d.bahan;
+          it.ukuranController.text = d.ukuran;
+          it.panjangController.text =
+              d.panjang > 0 ? d.panjang.toString() : '';
+          it.lebarController.text = d.lebar > 0 ? d.lebar.toString() : '';
+          it.qtyController.text =
+              d.qty > 0 ? (d.qty == d.qty.roundToDouble() ? d.qty.toInt().toString() : d.qty.toString()) : '1';
+          it.hargaController.text =
+              d.harga > 0 ? d.harga.toInt().toString() : '0';
+          it.noPermintaan = d.minta;
+          _items.add(it);
+        }
+      } else {
+        _items.add(DraftDetailItem());
+      }
+    } else {
+      _selectedSalesKode = user?.salesKode ?? user?.kode ?? '';
+      _selectedSalesNama = user?.nama ?? '';
+      _items.add(DraftDetailItem());
+    }
   }
 
   static String _formatTanggalIndonesia(DateTime date) {
@@ -566,6 +631,23 @@ class _PenawaranCreateScreenState extends ConsumerState<PenawaranCreateScreen> {
       'details': detailsPayload,
     };
 
+    if (_isEditMode) {
+      final targetNomor = widget.initialDetail!.header!.nomor;
+      final result = await repo.updatePenawaran(targetNomor, payload);
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        if (result.success) {
+          AppToast.success(context, result.message);
+          context.pop(true);
+        } else {
+          AppToast.error(context, result.message);
+        }
+      }
+      return;
+    }
+
     final resultNomor = await repo.createPenawaran(payload);
 
     if (mounted) {
@@ -593,14 +675,28 @@ class _PenawaranCreateScreenState extends ConsumerState<PenawaranCreateScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FF),
       appBar: AppBar(
-        title: const Text(
-          'Buat Surat Penawaran',
-          style: TextStyle(
-            color: Color(0xFF0F172A),
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.3,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _isEditMode ? 'Edit Surat Penawaran' : 'Buat Surat Penawaran',
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
+              ),
+            ),
+            if (_isEditMode && (widget.initialDetail?.header?.nomor.isNotEmpty ?? false))
+              Text(
+                'No: ${widget.initialDetail!.header!.nomor}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+          ],
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -664,7 +760,7 @@ class _PenawaranCreateScreenState extends ConsumerState<PenawaranCreateScreen> {
               ),
               const SizedBox(width: 14),
               AppButton(
-                text: 'Simpan Penawaran',
+                text: _isEditMode ? 'Simpan Perubahan' : 'Simpan Penawaran',
                 onPressed: _submit,
                 isLoading: _isLoading,
                 icon: Icons.check_circle_outline,
