@@ -389,6 +389,7 @@ class _PermintaanHargaDetailScreenState
   bool _isLoading = false;
   bool _image1Error = false;
   bool _image2Error = false;
+  int _fetchTimestamp = DateTime.now().millisecondsSinceEpoch;
 
   @override
   void initState() {
@@ -401,6 +402,7 @@ class _PermintaanHargaDetailScreenState
       _isLoading = true;
       _image1Error = false;
       _image2Error = false;
+      _fetchTimestamp = DateTime.now().millisecondsSinceEpoch;
     });
     final repo = ref.read(permintaanHargaRepositoryProvider);
     final data = await repo.getDetail(widget.nomor);
@@ -598,10 +600,8 @@ class _PermintaanHargaDetailScreenState
           '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
         );
 
-    // Tambahkan cache-buster persis React Native
-    final cacheBuster = _detail!.createdAtFmt.isNotEmpty
-        ? _detail!.createdAtFmt.hashCode.abs().toString()
-        : DateTime.now().millisecondsSinceEpoch.toString();
+    // Tambahkan cache-buster berbasis update timestamp agar langsung segar setelah upload/edit
+    final cacheBuster = _fetchTimestamp.toString();
 
     return '$resolved?t=$cacheBuster';
   }

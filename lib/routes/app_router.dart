@@ -31,6 +31,7 @@ import '../screens/penawaran/tracking_spk_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_detail_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_form_screen.dart';
 import '../screens/permintaan_harga/permintaan_harga_list_screen.dart';
+import '../screens/permintaan_harga/tambah_customer_screen.dart';
 import '../screens/inkaso/invoice_jatuh_tempo_screen.dart';
 import '../screens/potensi/laporan_potensi_screen.dart';
 import '../screens/potensi/potensi_screen.dart';
@@ -158,6 +159,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/customer',
         name: 'customer',
         builder: (context, state) => const RekapCalonCustomerScreen(),
+        routes: [
+          GoRoute(
+            path: 'tambah',
+            name: 'tambah-customer',
+            builder: (context, state) =>
+                const TambahCustomerPermintaanHargaScreen(),
+          ),
+          GoRoute(
+            path: 'edit',
+            name: 'edit-customer',
+            builder: (context, state) {
+              final customer = state.extra as CustomerModel?;
+              return TambahCustomerPermintaanHargaScreen(
+                initialCustomer: customer,
+              );
+            },
+          ),
+        ],
       ),
 
       // Modul Visit
@@ -334,6 +353,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               final detail = state.extra as PermintaanHargaDetail?;
               return PermintaanHargaFormScreen(initialDetail: detail);
             },
+          ),
+          GoRoute(
+            path: 'tambah-customer',
+            name: 'permintaan-harga-tambah-customer',
+            builder: (context, state) =>
+                const TambahCustomerPermintaanHargaScreen(),
           ),
 
           GoRoute(

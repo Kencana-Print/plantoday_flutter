@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../models/customer_model.dart';
 import '../repositories/customer_repository.dart';
 
@@ -204,6 +205,28 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
                                 color: Color(0xFF64748B),
                                 fontWeight: FontWeight.w600,
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF4F46E5)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: const Icon(Icons.add,
+                                  size: 16, color: Color(0xFF4F46E5)),
+                              label: const Text(
+                                'Tambah Customer Baru',
+                                style: TextStyle(
+                                  color: Color(0xFF4F46E5),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                await context.push('/customer/tambah');
+                              },
                             ),
                           ],
                         ),

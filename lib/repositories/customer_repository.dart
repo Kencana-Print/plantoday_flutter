@@ -47,6 +47,52 @@ class CustomerRepository {
     }
   }
 
+  Future<bool> createCalonCustomer(CustomerModel customer, String userName) async {
+    final payload = customer.toJson();
+    payload['user_create'] = userName;
+
+    try {
+      final response = await _api.dio.post(ApiConfig.calonCustomer, data: payload);
+      return response.data != null && response.data['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateCalonCustomer(String ccKode, CustomerModel customer) async {
+    final payload = customer.toJson();
+
+    try {
+      final response = await _api.dio.put('/update-customer/$ccKode', data: payload);
+      return response.data != null && response.data['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> cekCustomerNama(
+    String nama, {
+    String? excludeKode,
+  }) async {
+    try {
+      final response = await _api.dio.get(
+        '/customer/cek-nama',
+        queryParameters: {
+          'nama': nama,
+          if (excludeKode != null && excludeKode.isNotEmpty)
+            'exclude_kode': excludeKode,
+        },
+      );
+      final data = response.data;
+      if (data != null && data['data'] is Map<String, dynamic>) {
+        return data['data'] as Map<String, dynamic>;
+      }
+      return {'isDuplicate': false, 'notice': null, 'matches': []};
+    } catch (_) {
+      return {'isDuplicate': false, 'notice': null, 'matches': []};
+    }
+  }
+
   Future<String?> getRekapCalonCustomerWA(String? keyword) async {
     try {
       final response = await _api.dio.get(
