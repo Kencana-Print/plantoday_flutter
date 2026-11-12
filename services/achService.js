@@ -65,7 +65,7 @@ const getAchievementRange = async ({
         ELSE ROUND((COALESCE(SUM(o.realisasi), 0) / COALESCE(SUM(t.target), 0)) * 100, 2)
         END AS ach
     FROM ${process.env.DB_NAME_ACH}.v_target_mkt_monthly t
-    JOIN ${process.env.DB_NAME_MAIN}.tsales s ON (
+    JOIN ${process.env.DB_NAME_PENAWARAN}.tsales s ON (
         t.kode_sales = s.sal_kode 
         OR (t.kode_sales = 'MO' AND s.sal_jabatan = 'CMO')
     )

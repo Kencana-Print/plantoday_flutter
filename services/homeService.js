@@ -522,7 +522,14 @@ const updateVisitPlan = async ({
             longitude = COALESCE(?, longitude)
         WHERE id = ?
         `,
-        [String(tanggal_plan), note ?? "", catatan ?? "", latitude, longitude, id],
+        [
+            String(tanggal_plan),
+            note ?? "",
+            catatan ?? "",
+            latitude,
+            longitude,
+            id,
+        ],
     );
 
     if (result.affectedRows === 0) {
@@ -1064,12 +1071,7 @@ const rekapVisitPlanWA = async ({ user, start, end, cabang }) => {
     WHERE ${outerFilter.sql}
     `;
 
-    const params = [
-        ...innerFilter.params,
-        start,
-        end,
-        ...outerFilter.params,
-    ];
+    const params = [...innerFilter.params, start, end, ...outerFilter.params];
 
     if (cabang) {
         sql += ` AND UPPER(ka.kar_cabang) = ?`;
