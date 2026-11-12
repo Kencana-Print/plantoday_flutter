@@ -52,6 +52,13 @@ const getInvoiceJatuhTempo = async (req, res) => {
                         summary: {
                             total_invoice: 0,
                             total_overdue: 0,
+                            total_realisasi: 0,
+                            total_batal: 0,
+                            by_status: {
+                                proforma: { count: 0, nominal: 0 },
+                                tidak_normal: { count: 0, nominal: 0 },
+                                normal: { count: 0, nominal: 0 },
+                            },
                             aging: {
                                 "1_30": { count: 0, nominal: 0 },
                                 "31_60": { count: 0, nominal: 0 },
@@ -75,6 +82,7 @@ const getInvoiceJatuhTempo = async (req, res) => {
         const data = await inkasoService.getInvoiceJatuhTempo({
             salesKode: targetSales,
             search: String(req.query.search || "").trim(),
+            status: String(req.query.status || "").trim(),
             page: req.query.page || 1,
             limit: req.query.limit || 5000,
         });
