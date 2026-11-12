@@ -1181,62 +1181,72 @@ const createPermintaanHargaInTransaction = async ({
         finalLebar = Math.round((rawLebar / 100) * 1000) / 1000;
     }
 
+    const isTanpaKalkulasi =
+        Boolean(
+            payload.tanpa_kalkulasi ||
+                payload.is_tanpa_kalkulasi ||
+                payload.is_custom_kain ||
+                payload.isDirectBypass,
+        ) || hargaKalkulasi <= 0;
+
     let finalKain = String(payload.mh_kain || "").trim();
-    if (divisiNum === 1) {
-        if (
-            !finalKain ||
-            finalKain.startsWith("Vynil") ||
-            finalKain.startsWith("Frontlite") ||
-            finalKain.startsWith("COTTON")
-        ) {
-            finalKain = String(
-                payload.spanduk_kain ||
-                    payload.spandukJenisKain ||
-                    "POLYESTER 50/36",
-            ).trim();
-        }
-    } else if (divisiNum === 5) {
-        const isSpandukOrGarmenKain = [
-            "POLYESTER",
-            "OPTIC",
-            "TC",
-            "COTTON",
-            "LACOST",
-            "PE",
-            "HYGIT",
-            "DRYFIT",
-        ].some((k) => finalKain.toUpperCase().includes(k));
-        if (!finalKain || isSpandukOrGarmenKain) {
-            const mmtKat = String(
-                payload.mmt_kategori || payload.kategori || "VYNIL",
-            )
-                .toUpperCase()
-                .trim();
-            const mmtBahan = String(
-                payload.mmt_bahan_kode || payload.bahanKode || "260",
-            ).trim();
-            try {
-                const [[mRow]] = await conn.query(
-                    "SELECT mhm_nama_bahan FROM tmintaharga_mmt WHERE mhm_kategori = ? AND mhm_bahan_kode = ? LIMIT 1",
-                    [mmtKat, mmtBahan],
-                );
-                finalKain = mRow?.mhm_nama_bahan || `${mmtKat} ${mmtBahan}`;
-            } catch (e) {
-                finalKain = `${mmtKat} ${mmtBahan}`;
+    if (!isTanpaKalkulasi || !finalKain) {
+        if (divisiNum === 1) {
+            if (
+                !finalKain ||
+                finalKain.startsWith("Vynil") ||
+                finalKain.startsWith("Frontlite") ||
+                finalKain.startsWith("COTTON")
+            ) {
+                finalKain = String(
+                    payload.spanduk_kain ||
+                        payload.spandukJenisKain ||
+                        "POLYESTER 50/36",
+                ).trim();
             }
-        }
-    } else if (divisiNum === 4) {
-        if (
-            !finalKain ||
-            finalKain.startsWith("Vynil") ||
-            finalKain.includes("POLYESTER") ||
-            finalKain.includes("OPTIC")
-        ) {
-            finalKain = String(
-                payload.garmen_kain ||
-                    payload.garmenJenisKain ||
-                    "COTTON COMBED 30S",
-            ).trim();
+        } else if (divisiNum === 5) {
+            const isSpandukOrGarmenKain = [
+                "POLYESTER",
+                "OPTIC",
+                "TC",
+                "COTTON",
+                "LACOST",
+                "PE",
+                "HYGIT",
+                "DRYFIT",
+            ].some((k) => finalKain.toUpperCase().includes(k));
+            if (!finalKain || isSpandukOrGarmenKain) {
+                const mmtKat = String(
+                    payload.mmt_kategori || payload.kategori || "VYNIL",
+                )
+                    .toUpperCase()
+                    .trim();
+                const mmtBahan = String(
+                    payload.mmt_bahan_kode || payload.bahanKode || "260",
+                ).trim();
+                try {
+                    const [[mRow]] = await conn.query(
+                        "SELECT mhm_nama_bahan FROM tmintaharga_mmt WHERE mhm_kategori = ? AND mhm_bahan_kode = ? LIMIT 1",
+                        [mmtKat, mmtBahan],
+                    );
+                    finalKain = mRow?.mhm_nama_bahan || `${mmtKat} ${mmtBahan}`;
+                } catch (e) {
+                    finalKain = `${mmtKat} ${mmtBahan}`;
+                }
+            }
+        } else if (divisiNum === 4) {
+            if (
+                !finalKain ||
+                finalKain.startsWith("Vynil") ||
+                finalKain.includes("POLYESTER") ||
+                finalKain.includes("OPTIC")
+            ) {
+                finalKain = String(
+                    payload.garmen_kain ||
+                        payload.garmenJenisKain ||
+                        "COTTON COMBED 30S",
+                ).trim();
+            }
         }
     }
 
@@ -1305,6 +1315,15 @@ const createPermintaanHargaInTransaction = async ({
         finalUserKalkulasi = "";
     }
 
+    const finalMhBudget = toNumber(
+        payload.mh_budget !== undefined
+            ? payload.mh_budget
+            : payload.budget !== undefined
+              ? payload.budget
+              : payload.harga_budget,
+        0,
+    );
+
     // Coba insert dengan kolom mh_workshop dan user_kalkulasi, fallback jika kolom belum ada di DB (ER_BAD_FIELD_ERROR)
     try {
         await conn.query(
@@ -1328,7 +1347,7 @@ const createPermintaanHargaInTransaction = async ({
                 String(payload.mh_nama || "").trim(),
                 toNumber(payload.mh_jmlorder, 0),
                 finalMhHarga,
-                toNumber(payload.mh_budget, 0),
+                finalMhBudget,
                 payload.mh_dateorder
                     ? normalizeDate(payload.mh_dateorder)
                     : null,
@@ -1386,7 +1405,7 @@ const createPermintaanHargaInTransaction = async ({
                     String(payload.mh_nama || "").trim(),
                     toNumber(payload.mh_jmlorder, 0),
                     finalMhHarga,
-                    toNumber(payload.mh_budget, 0),
+                    finalMhBudget,
                     payload.mh_dateorder
                         ? normalizeDate(payload.mh_dateorder)
                         : null,
@@ -1532,6 +1551,10 @@ const getPermintaanHargaList = async ({
             COALESCE(NULLIF(m.mh_nomor_kalkulasi, ''), NULLIF(k2.kal_nomor, ''), NULLIF(k.kal_nomor, ''), '') AS nomor_kalkulasi,
             COALESCE(m.mh_status,'') AS status,
             COALESCE(NULLIF(k2.kal_ket, ''), m.mh_ket_kalkulasi, '') AS ket_kalkulasi,
+            COALESCE(m.mh_budget, 0) AS mh_budget,
+            COALESCE(m.mh_budget, 0) AS budget,
+            COALESCE(m.mh_kain, '') AS mh_kain,
+            COALESCE(m.mh_kain, '') AS kain,
             COALESCE(m.user_create,'') AS user_create
         FROM tmintaharga m
         LEFT JOIN tdivisi v ON v.kode = m.mh_divisi
@@ -1616,6 +1639,8 @@ const getPermintaanHargaDetail = async ({
     }
 
     const row = rows[0];
+    row.mh_budget = toNumber(row.mh_budget, 0);
+    row.budget = row.mh_budget;
     row.kald_rpkirim = 0;
     row.mh_ongkir = 0;
     row.kal_rpsales = 0;
@@ -2118,31 +2143,69 @@ const updatePermintaanHarga = async ({ nomor, body, user }) => {
         updateFinalLebar = Math.round((updateRawLebar / 100) * 1000) / 1000;
     }
 
+    const isUpdateTanpaKalkulasi =
+        Boolean(
+            body.tanpa_kalkulasi ||
+                body.is_tanpa_kalkulasi ||
+                body.is_custom_kain ||
+                body.isDirectBypass,
+        ) ||
+        (!rows[0].mh_nomor_kalkulasi &&
+            toNumber(body.mh_harga_kalkulasi, 0) === 0);
+
     let updateKain = String(body.mh_kain || "").trim();
-    if (updateDivisiNum === 5) {
-        const isSpandukOrGarmen = [
-            "POLYESTER",
-            "OPTIC",
-            "TC",
-            "COTTON",
-            "LACOST",
-            "PE",
-        ].some((k) => updateKain.toUpperCase().includes(k));
-        if (!updateKain || isSpandukOrGarmen) {
-            const mmtKat = String(body.mmt_kategori || body.kategori || "VYNIL")
-                .toUpperCase()
-                .trim();
-            const mmtBahan = String(
-                body.mmt_bahan_kode || body.bahanKode || "260",
-            ).trim();
-            try {
-                const [[mRow]] = await db.query(
-                    "SELECT mhm_nama_bahan FROM tmintaharga_mmt WHERE mhm_kategori = ? AND mhm_bahan_kode = ? LIMIT 1",
-                    [mmtKat, mmtBahan],
-                );
-                updateKain = mRow?.mhm_nama_bahan || `${mmtKat} ${mmtBahan}`;
-            } catch (e) {
-                updateKain = `${mmtKat} ${mmtBahan}`;
+    if (!isUpdateTanpaKalkulasi || !updateKain) {
+        if (updateDivisiNum === 5) {
+            const isSpandukOrGarmen = [
+                "POLYESTER",
+                "OPTIC",
+                "TC",
+                "COTTON",
+                "LACOST",
+                "PE",
+            ].some((k) => updateKain.toUpperCase().includes(k));
+            if (!updateKain || isSpandukOrGarmen) {
+                const mmtKat = String(body.mmt_kategori || body.kategori || "VYNIL")
+                    .toUpperCase()
+                    .trim();
+                const mmtBahan = String(
+                    body.mmt_bahan_kode || body.bahanKode || "260",
+                ).trim();
+                try {
+                    const [[mRow]] = await db.query(
+                        "SELECT mhm_nama_bahan FROM tmintaharga_mmt WHERE mhm_kategori = ? AND mhm_bahan_kode = ? LIMIT 1",
+                        [mmtKat, mmtBahan],
+                    );
+                    updateKain = mRow?.mhm_nama_bahan || `${mmtKat} ${mmtBahan}`;
+                } catch (e) {
+                    updateKain = `${mmtKat} ${mmtBahan}`;
+                }
+            }
+        } else if (updateDivisiNum === 1) {
+            if (
+                !updateKain ||
+                updateKain.startsWith("Vynil") ||
+                updateKain.startsWith("Frontlite") ||
+                updateKain.startsWith("COTTON")
+            ) {
+                updateKain = String(
+                    body.spanduk_kain ||
+                        body.spandukJenisKain ||
+                        "POLYESTER 50/36",
+                ).trim();
+            }
+        } else if (updateDivisiNum === 4) {
+            if (
+                !updateKain ||
+                updateKain.startsWith("Vynil") ||
+                updateKain.includes("POLYESTER") ||
+                updateKain.includes("OPTIC")
+            ) {
+                updateKain = String(
+                    body.garmen_kain ||
+                        body.garmenJenisKain ||
+                        "COTTON COMBED 30S",
+                ).trim();
             }
         }
     }
@@ -2541,6 +2604,18 @@ const updatePermintaanHarga = async ({ nomor, body, user }) => {
         else if (rawUpd === "P01" || rawUpd === "MEDIUM") updWorkshop = "P01";
         else updWorkshop = "P01";
     }
+
+    const updateBudget = toNumber(
+        body.mh_budget !== undefined
+            ? body.mh_budget
+            : body.budget !== undefined
+              ? body.budget
+              : body.harga_budget !== undefined
+                ? body.harga_budget
+                : rows[0].mh_budget,
+        0,
+    );
+
     if (hasWorkshopColUpd && updWorkshop !== null) {
         await db.query(
             `
@@ -2584,7 +2659,7 @@ const updatePermintaanHarga = async ({ nomor, body, user }) => {
                 String(body.mh_nama || "").trim(),
                 toNumber(body.mh_jmlorder, 0),
                 updFinalMhHarga,
-                toNumber(body.mh_budget, 0),
+                updateBudget,
                 normalizeDate(body.mh_dateorder),
                 updateKain,
                 toDecimalNumber(body.mh_panjang, 0),
@@ -2653,7 +2728,7 @@ const updatePermintaanHarga = async ({ nomor, body, user }) => {
                 String(body.mh_nama || "").trim(),
                 toNumber(body.mh_jmlorder, 0),
                 updFinalMhHarga,
-                toNumber(body.mh_budget, 0),
+                updateBudget,
                 normalizeDate(body.mh_dateorder),
                 updateKain,
                 toDecimalNumber(body.mh_panjang, 0),
