@@ -11,7 +11,6 @@ const {
 const { kalkulasiGarmenEngine } = require("../utils/kalkulasiGarmenHelper");
 
 const nomorLocks = new Map();
-const uploadDir = path.join(process.cwd(), "uploads", "mintaharga");
 
 const toNumber = (value, fallback = 0) => {
     const num = Number(value);
@@ -158,7 +157,9 @@ const resolveImagePublicOrigin = () => {
 const buildImageBaseUrl = () => resolveImagePublicOrigin();
 
 const buildImagePaths = (nomor) => {
-    const safeNomor = String(nomor || "").trim();
+    const safeNomor = String(nomor || "")
+        .trim()
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
     return {
         delphi1: `/images/mintaharga/${safeNomor}.jpg`,
         delphi2: `/images/mintaharga/${safeNomor}-2.jpg`,
@@ -168,7 +169,9 @@ const buildImagePaths = (nomor) => {
 };
 
 const getExistingImageMeta = (nomor, slot) => {
-    const safeNomor = String(nomor || "").trim();
+    const safeNomor = String(nomor || "")
+        .trim()
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
     if (!safeNomor) return null;
     const fileName = slot === 2 ? `${safeNomor}-2.jpg` : `${safeNomor}.jpg`;
     const absolutePath = path.join(UPLOAD_DIR, fileName);
@@ -1434,8 +1437,14 @@ const createPermintaanHargaInTransaction = async ({
 };
 
 const cloneImageFile = async (fromNomor, toNomor, suffix = "") => {
-    const src = path.join(uploadDir, `${fromNomor}${suffix}.jpg`);
-    const dst = path.join(uploadDir, `${toNomor}${suffix}.jpg`);
+    const safeFrom = String(fromNomor || "")
+        .trim()
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
+    const safeTo = String(toNomor || "")
+        .trim()
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
+    const src = path.join(UPLOAD_DIR, `${safeFrom}${suffix}.jpg`);
+    const dst = path.join(UPLOAD_DIR, `${safeTo}${suffix}.jpg`);
     try {
         await fs.promises.access(src, fs.constants.F_OK);
         await fs.promises.copyFile(src, dst);
@@ -3278,6 +3287,7 @@ const uploadPermintaanHargaImageBase64 = async ({
 
     try {
         buffer = await sharp(buffer)
+            .rotate()
             .jpeg({ quality: 90, force: true })
             .toBuffer();
     } catch (sharpErr) {
@@ -3289,7 +3299,7 @@ const uploadPermintaanHargaImageBase64 = async ({
 
     const safeNomor = String(nomor || "")
         .trim()
-        .replace(/[^A-Z0-9.\-_/]/gi, "_");
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
     const suffix = slot === "2" ? "-2" : "";
     const fileName = `${safeNomor}${suffix}.${ext}`;
     const targetPath = path.join(UPLOAD_DIR, fileName);
@@ -3371,7 +3381,10 @@ const deletePermintaanHargaImage = async ({ nomor, slot, user }) => {
         };
     }
 
-    const fileName = slot === "2" ? `${nomor}-2.jpg` : `${nomor}.jpg`;
+    const safeNomor = String(nomor || "")
+        .trim()
+        .replace(/[^A-Z0-9.\-_]/gi, "_");
+    const fileName = slot === "2" ? `${safeNomor}-2.jpg` : `${safeNomor}.jpg`;
     const targetPath = path.join(UPLOAD_DIR, fileName);
 
     if (fs.existsSync(targetPath)) {
