@@ -1039,6 +1039,15 @@ class _PermintaanHargaDetailScreenState
                                     fullWidth: true,
                                   ),
                                 ],
+                                if (_detail!.budget > 0) ...[
+                                  const SizedBox(height: 10),
+                                  _CompactCell(
+                                    label: 'Harga Budget Customer',
+                                    value: 'Rp ${_formatNumber(_detail!.budget)} / pcs',
+                                    highlight: true,
+                                    fullWidth: true,
+                                  ),
+                                ],
                                 if (extractOngkirInfo(_detail!).hasOngkir) ...[
                                   const SizedBox(height: 10),
                                   _CompactCell(

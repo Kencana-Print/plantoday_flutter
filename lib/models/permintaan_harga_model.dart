@@ -10,6 +10,8 @@ class PermintaanHargaItem {
   final String status;
   final String ketKalkulasi;
   final String userCreate;
+  final double budget;
+  final String kain;
 
   const PermintaanHargaItem({
     required this.nomor,
@@ -23,6 +25,8 @@ class PermintaanHargaItem {
     this.status = '',
     this.ketKalkulasi = '',
     this.userCreate = '',
+    this.budget = 0.0,
+    this.kain = '',
   });
 
   factory PermintaanHargaItem.fromJson(Map<String, dynamic> json) {
@@ -55,6 +59,11 @@ class PermintaanHargaItem {
           json['mh_ket_kalkulasi']?.toString() ??
           '',
       userCreate: json['user_create']?.toString() ?? '',
+      budget:
+          (json['mh_budget'] as num?)?.toDouble() ??
+          (json['budget'] as num?)?.toDouble() ??
+          0.0,
+      kain: json['mh_kain']?.toString() ?? json['kain']?.toString() ?? '',
     );
   }
 }

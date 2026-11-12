@@ -17,6 +17,8 @@ class InvoiceJatuhTempoRepository {
   Future<InvoiceJatuhTempoResult> getInvoiceJatuhTempo({
     String? sales,
     String? search,
+    int? month,
+    int? year,
     int page = 1,
     int limit = 5000,
   }) async {
@@ -27,6 +29,8 @@ class InvoiceJatuhTempoRepository {
       };
       if (sales != null && sales.isNotEmpty) queryParams['sales'] = sales;
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
+      if (month != null) queryParams['month'] = month;
+      if (year != null) queryParams['year'] = year;
 
       final response = await _api.dio.get(
         '/invoice-jatuh-tempo',

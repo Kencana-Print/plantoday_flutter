@@ -475,11 +475,20 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
     );
     final header = _header;
     final isSigned = header?.isApproved ?? false;
-    final canEdit =
-        header != null && !isSigned && header.approvalState.trim().toUpperCase() != 'WAIT';
-
     final user = ref.watch(authProvider).user;
     final isManager = user?.isManager ?? false;
+    final authSalesKode =
+        (user?.salesKode ?? user?.salKode ?? user?.kodeSales ?? user?.kode ?? '')
+            .trim()
+            .toUpperCase();
+    final rowSalesKode = (header?.salesKode ?? '').trim().toUpperCase();
+    final isOwner = isManager ||
+        (authSalesKode.isNotEmpty && authSalesKode == rowSalesKode);
+
+    final canEdit = isOwner &&
+        header != null &&
+        !isSigned &&
+        header.approvalState.trim().toUpperCase() != 'WAIT';
 
     return Scaffold(
       body: Container(
@@ -662,7 +671,12 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
 
               // 3. BOTTOM ACTION (Persis styles.bottomAction React Native)
               if (!_isLoading && header != null)
-                _buildBottomAction(isManager: isManager, isSigned: isSigned),
+                _buildBottomAction(
+                  isManager: isManager,
+                  isSigned: isSigned,
+                  canEdit: canEdit,
+                  header: header,
+                ),
             ],
           ),
         ),
@@ -1157,7 +1171,12 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
   }
 
   // --- WIDGET BOTTOM ACTION ---
-  Widget _buildBottomAction({required bool isManager, required bool isSigned}) {
+  Widget _buildBottomAction({
+    required bool isManager,
+    required bool isSigned,
+    required bool canEdit,
+    required PenawaranHeader? header,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
@@ -1280,62 +1299,112 @@ class _PenawaranDetailScreenState extends ConsumerState<PenawaranDetailScreen> {
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Row 1: Ajukan Perubahan & Ubah Status
+                // Row 1: Edit / Ajukan Perubahan & Ubah Status
                 Row(
                   children: [
-                    // Button Ajukan Perubahan
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: isSigned
-                            ? () {
-                                AppToast.warning(
-                                  context,
-                                  'Penawaran sudah diapprove dan tidak dapat diajukan perubahan',
-                                );
-                              }
-                            : _showRequestChangeDialog,
-                        child: Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: isSigned
-                                ? const Color(0xFFF1F5F9)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isSigned
-                                  ? const Color(0xFFCBD5E1)
-                                  : const Color(0xFF4F46E5),
-                              width: 1.2,
+                    if (canEdit)
+                      // Button Edit Penawaran (langsung edit jika memenuhi syarat)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final refresh = await context.push<bool>(
+                              '/penawaran/edit',
+                              extra: PenawaranDetailData(
+                                header: header,
+                                details: _details,
+                              ),
+                            );
+                            if (refresh == true) {
+                              _fetchDetail();
+                            }
+                          },
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4F46E5),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFF4338CA),
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.edit_rounded,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Edit Penawaran',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.edit_note,
-                                size: 18,
+                        ),
+                      )
+                    else
+                      // Button Ajukan Perubahan (jika belum disetujui tapi butuh approval / tidak bisa edit langsung)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: isSigned
+                              ? () {
+                                  AppToast.warning(
+                                    context,
+                                    'Penawaran sudah diapprove dan tidak dapat diajukan perubahan',
+                                  );
+                                }
+                              : _showRequestChangeDialog,
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: isSigned
+                                  ? const Color(0xFFF1F5F9)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
                                 color: isSigned
-                                    ? const Color(0xFF94A3B8)
+                                    ? const Color(0xFFCBD5E1)
                                     : const Color(0xFF4F46E5),
+                                width: 1.2,
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Ajukan Perubahan',
-                                style: TextStyle(
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.edit_note,
+                                  size: 18,
                                   color: isSigned
                                       ? const Color(0xFF94A3B8)
                                       : const Color(0xFF4F46E5),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.5,
-                                  letterSpacing: 0.2,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Ajukan Perubahan',
+                                  style: TextStyle(
+                                    color: isSigned
+                                        ? const Color(0xFF94A3B8)
+                                        : const Color(0xFF4F46E5),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     const SizedBox(width: 10),
 
                     // Button Ubah Status

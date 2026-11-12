@@ -118,6 +118,19 @@ class _PenawaranListScreenState extends ConsumerState<PenawaranListScreen> {
   bool _canEdit(PenawaranListItem item) {
     if (item.isApproved) return false;
     if (item.approvalState.trim().toUpperCase() == 'WAIT') return false;
+
+    final user = ref.read(authProvider).user;
+    if (user == null) return false;
+    if (user.isManager) return true;
+
+    final authNama = user.nama.trim().toUpperCase();
+    final rowSalesNama = item.sales.trim().toUpperCase();
+    if (authNama.isNotEmpty && rowSalesNama.isNotEmpty) {
+      return authNama == rowSalesNama ||
+          authNama.contains(rowSalesNama) ||
+          rowSalesNama.contains(authNama);
+    }
+
     return true;
   }
 

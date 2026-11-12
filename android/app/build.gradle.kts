@@ -1,8 +1,28 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasKeyProperties = keystorePropertiesFile.exists()
+
+if (hasKeyProperties) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+val configuredStoreFile = keystoreProperties.getProperty("storeFile")
+val keystoreFile = if (configuredStoreFile != null) {
+    val f = file(configuredStoreFile)
+    if (f.exists()) f else rootProject.file(configuredStoreFile)
+} else {
+    file("plantoday.jks")
+}
+val hasValidKeyProperties = hasKeyProperties && keystoreFile.exists()
 
 android {
     namespace = "com.plantoday.flutter.plantoday_flutter"
@@ -31,14 +51,21 @@ android {
 
     signingConfigs {
         create("release") {
-            val storeFilePath = System.getenv("MYAPP_UPLOAD_STORE_FILE")
-            if (!storeFilePath.isNullOrEmpty()) {
-                val storeFileObj = file(storeFilePath)
-                if (storeFileObj.exists()) {
-                    storeFile = storeFileObj
-                    storePassword = System.getenv("MYAPP_UPLOAD_STORE_PASSWORD")
-                    keyAlias = System.getenv("MYAPP_UPLOAD_KEY_ALIAS")
-                    keyPassword = System.getenv("MYAPP_UPLOAD_KEY_PASSWORD")
+            if (hasValidKeyProperties) {
+                storeFile = keystoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            } else {
+                val storeFilePath = System.getenv("MYAPP_UPLOAD_STORE_FILE")
+                if (!storeFilePath.isNullOrEmpty()) {
+                    val storeFileObj = file(storeFilePath)
+                    if (storeFileObj.exists()) {
+                        storeFile = storeFileObj
+                        storePassword = System.getenv("MYAPP_UPLOAD_STORE_PASSWORD")
+                        keyAlias = System.getenv("MYAPP_UPLOAD_KEY_ALIAS")
+                        keyPassword = System.getenv("MYAPP_UPLOAD_KEY_PASSWORD")
+                    }
                 }
             }
         }

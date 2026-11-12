@@ -353,10 +353,15 @@ class _PermintaanHargaListScreenState
     if (user == null) return false;
     if (user.isManager) return true;
 
-    if (item.userCreate.isNotEmpty &&
-        item.userCreate.trim().toUpperCase() == user.nama.trim().toUpperCase()) {
-      return true;
+    final authNama = user.nama.trim().toUpperCase();
+    final rowUserCreate = item.userCreate.trim().toUpperCase();
+
+    if (authNama.isNotEmpty && rowUserCreate.isNotEmpty) {
+      return authNama == rowUserCreate ||
+          authNama.contains(rowUserCreate) ||
+          rowUserCreate.contains(authNama);
     }
+
     return true;
   }
 

@@ -22,6 +22,24 @@ class _InvoiceJatuhTempoScreenState
     extends ConsumerState<InvoiceJatuhTempoScreen> {
   final _searchController = TextEditingController();
 
+  final _monthNames = const [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember'
+  ];
+
+  late final int _activeMonth = DateTime.now().month;
+  late final int _activeYear = DateTime.now().year;
+
   bool _isLoading = false;
   InvoiceJatuhTempoSummary? _summary;
   List<InvoiceJatuhTempoItem> _items = [];
@@ -74,6 +92,8 @@ class _InvoiceJatuhTempoScreenState
     final repo = ref.read(invoiceJatuhTempoRepositoryProvider);
     final result = await repo.getInvoiceJatuhTempo(
       sales: _selectedSales.isNotEmpty ? _selectedSales : null,
+      month: _activeMonth,
+      year: _activeYear,
     );
 
     if (mounted) {
@@ -347,7 +367,7 @@ class _InvoiceJatuhTempoScreenState
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '$totalInvoiceAktif invoice aktif · ${salesGroups.length} sales',
+                                  '${_monthNames[_activeMonth - 1]} $_activeYear · $totalInvoiceAktif invoice aktif · ${salesGroups.length} sales',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,

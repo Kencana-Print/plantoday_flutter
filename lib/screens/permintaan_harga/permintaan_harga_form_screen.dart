@@ -143,6 +143,14 @@ int _toNumCurrency(String val) {
   return int.tryParse(cleaned) ?? 0;
 }
 
+num _toNumAny(dynamic val, [num fallback = 0]) {
+  if (val == null) return fallback;
+  if (val is num) return val;
+  return num.tryParse(val.toString().trim()) ??
+      double.tryParse(val.toString().replaceAll(',', '').trim()) ??
+      fallback;
+}
+
 class PermintaanHargaFormScreen extends ConsumerStatefulWidget {
   final PermintaanHargaDetail? initialDetail;
 
@@ -156,6 +164,7 @@ class PermintaanHargaFormScreen extends ConsumerStatefulWidget {
 class _PermintaanHargaFormScreenState
     extends ConsumerState<PermintaanHargaFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
 
   // Wizard Step: 1 = Spesifikasi, 2 = Kalkulasi, 3 = Review & Pengajuan
   int _currentStep = 1;
@@ -177,6 +186,12 @@ class _PermintaanHargaFormScreenState
   final _qtyController = TextEditingController();
   DateTime _rencanaOrderDate = DateTime.now();
   final _keteranganController = TextEditingController();
+
+  // Free Text / Custom Bahan & Budget Tanpa Kalkulasi
+  bool _isCustomBahan = false;
+  final _customBahanController = TextEditingController();
+  final _budgetController = TextEditingController();
+  bool _isDirectBypass = false;
 
   // Pra-Order (Opsional)
   String _praOrderNomor = '';
@@ -730,6 +745,19 @@ class _PermintaanHargaFormScreenState
       _hargaMintaController.text = _formatNumberDisplay(_hargaKalkulasi);
     }
 
+    if (d.budget > 0) {
+      _budgetController.text = _formatNumberDisplay(d.budget.toInt());
+    }
+
+    if (d.hargaKalkulasi == 0 &&
+        (d.nomorKalkulasi.isEmpty || d.status == 'BELUM')) {
+      _isDirectBypass = true;
+      if (d.kain.isNotEmpty) {
+        _isCustomBahan = true;
+        _customBahanController.text = d.kain;
+      }
+    }
+
     if (d.cusKode.isNotEmpty) {
       _fetchCustomerHistory(d.cusKode);
     }
@@ -741,6 +769,8 @@ class _PermintaanHargaFormScreenState
     _panjangController.removeListener(_onDimensionOrQtyChanged);
     _lebarController.removeListener(_onDimensionOrQtyChanged);
     _customOngkirValController.removeListener(_onDimensionOrQtyChanged);
+    _customBahanController.dispose();
+    _budgetController.dispose();
     _customerNamaController.dispose();
     _barangController.dispose();
     _qtyController.dispose();
@@ -761,6 +791,7 @@ class _PermintaanHargaFormScreenState
     _keteranganKalkulasiController.dispose();
     _hargaMintaController.dispose();
     _alasanPengajuanController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -880,8 +911,7 @@ class _PermintaanHargaFormScreenState
             );
             if (matched.isNotEmpty) {
               final newBiaya =
-                  ((matched['biaya'] ?? matched['mhb_biaya'] ?? 0) as num)
-                      .toInt();
+                  _toNumAny(matched['biaya'] ?? matched['mhb_biaya']).toInt();
               _garmenSelectedCetak[i]['biaya'] = newBiaya;
             }
           }
@@ -898,11 +928,11 @@ class _PermintaanHargaFormScreenState
               orElse: () => <String, dynamic>{},
             );
             if (matched.isNotEmpty) {
-              final newTarif = ((matched['biaya'] ??
-                      matched['mhb_biaya'] ??
-                      matched['tarif'] ??
-                      0) as num)
-                  .toInt();
+              final newTarif = _toNumAny(
+                matched['biaya'] ??
+                    matched['mhb_biaya'] ??
+                    matched['tarif'],
+              ).toInt();
               if (newTarif > 0) {
                 _garmenSelectedTambahan[i]['tarif'] = newTarif;
               }
@@ -965,8 +995,7 @@ class _PermintaanHargaFormScreenState
           );
           if (matched.isNotEmpty) {
             final newBiaya =
-                ((matched['biaya'] ?? matched['mhb_biaya'] ?? 0) as num)
-                    .toInt();
+                _toNumAny(matched['biaya'] ?? matched['mhb_biaya']).toInt();
             _garmenSelectedCetak[i]['biaya'] = newBiaya;
           }
         }
@@ -1004,8 +1033,7 @@ class _PermintaanHargaFormScreenState
           );
           if (masterItem.isNotEmpty) {
             final newTarif =
-                ((masterItem['tarif'] ?? masterItem['biaya'] ?? 0) as num)
-                    .toInt();
+                _toNumAny(masterItem['tarif'] ?? masterItem['biaya']).toInt();
             _garmenSelectedTambahan[i]['tarif'] = newTarif;
           }
         }
@@ -1110,12 +1138,12 @@ class _PermintaanHargaFormScreenState
     cleanKet = cleanKet.replaceAll(RegExp(r'^[;,.\s]+|[;,.\s]+$'), '');
 
     if (trimmed.toLowerCase() == 'tanpa ongkir') {
-      _keteranganController.text =
-          cleanKet.isEmpty ? 'Tanpa Ongkir' : '$cleanKet; Tanpa Ongkir';
+      _keteranganController.text = cleanKet.isEmpty
+          ? 'Tanpa Ongkir'
+          : '$cleanKet; Tanpa Ongkir';
     } else if (trimmed.isNotEmpty) {
       final inc = 'Include kirim ke $trimmed';
-      _keteranganController.text =
-          cleanKet.isEmpty ? inc : '$cleanKet; $inc';
+      _keteranganController.text = cleanKet.isEmpty ? inc : '$cleanKet; $inc';
     } else {
       _keteranganController.text = cleanKet;
     }
@@ -1899,12 +1927,16 @@ class _PermintaanHargaFormScreenState
       return 'Jumlah order (pcs) harus lebih besar dari 0';
     }
 
+    if (_isCustomBahan && _customBahanController.text.trim().isEmpty) {
+      return 'Nama bahan / kain custom wajib diisi';
+    }
+
     // 1. Validasi Spesifik Divisi GARMEN (4)
     if (_selectedDivisi == '4') {
       if (_garmenKodeModel.trim().isEmpty) {
         return 'Model garmen wajib dipilih (1 Warna atau 2 Warna)';
       }
-      if (_garmenJenisKain.trim().isEmpty) {
+      if (!_isCustomBahan && _garmenJenisKain.trim().isEmpty) {
         return 'Silakan pilih jenis kain garmen terlebih dahulu';
       }
       if (_garmenWarna.trim().isEmpty) {
@@ -1916,10 +1948,10 @@ class _PermintaanHargaFormScreenState
     }
     // 2. Validasi Spesifik Divisi SPANDUK (1)
     else if (_selectedDivisi == '1') {
-      if (_spandukMetode.trim().isEmpty) {
+      if (!_isCustomBahan && _spandukMetode.trim().isEmpty) {
         return 'Metode cetak spanduk wajib dipilih (Manual atau Machine)';
       }
-      if (_spandukJenisKain.trim().isEmpty) {
+      if (!_isCustomBahan && _spandukJenisKain.trim().isEmpty) {
         return 'Jenis kain spanduk wajib dipilih';
       }
       final lebarSpanduk = _spandukLebar > 0
@@ -1931,7 +1963,7 @@ class _PermintaanHargaFormScreenState
       if (_toNumDecimal(_panjangController.text) <= 0) {
         return 'Panjang spanduk (Mtr) wajib diisi lebih besar dari 0';
       }
-      if (_isManualSpandukNotAllowed) {
+      if (!_isCustomBahan && _isManualSpandukNotAllowed) {
         final numPanjang = _toNumDecimal(_panjangController.text);
         final numLebar = _spandukLebar > 0 ? _spandukLebar : 90.0;
         final totalLuasM2 = numPanjang * (numLebar / 100.0) * qty;
@@ -1940,10 +1972,10 @@ class _PermintaanHargaFormScreenState
     }
     // 3. Validasi Spesifik Divisi MMT (5)
     else if (_selectedDivisi == '5') {
-      if (_mmtKategori.trim().isEmpty) {
+      if (!_isCustomBahan && _mmtKategori.trim().isEmpty) {
         return 'Kategori MMT wajib dipilih';
       }
-      if (_mmtBahanKode.trim().isEmpty) {
+      if (!_isCustomBahan && _mmtBahanKode.trim().isEmpty) {
         return 'Pilihan bahan MMT wajib dipilih';
       }
       if (_toNumDecimal(_panjangController.text) <= 0) {
@@ -1972,6 +2004,97 @@ class _PermintaanHargaFormScreenState
     return null;
   }
 
+  void _scrollToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _showCustomBahanPopup() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.info_outline_rounded,
+                color: Color(0xFF64748B),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Informasi Bahan Custom',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Kalkulasi otomatis tidak tersedia untuk bahan custom.',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Silakan gunakan tombol "Buat Permintaan Harga (Tanpa Kalkulasi)" di bawah untuk langsung melanjutkan proses pengajuan.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Color(0xFF64748B),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Mengerti',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2563EB),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- STEP TRANSITION ---
   void _goToStep2() {
     _formKey.currentState?.validate();
@@ -1984,6 +2107,7 @@ class _PermintaanHargaFormScreenState
     setState(() {
       _currentStep = 2;
     });
+    _scrollToTop();
 
     // Auto trigger kalkulasi pertama kali jika belum pernah dihitung
     if (_selectedDivisi == '1' && _spandukResult == null) {
@@ -2008,16 +2132,20 @@ class _PermintaanHargaFormScreenState
     setState(() {
       _currentStep = 3;
     });
+    _scrollToTop();
   }
 
   // --- SUBMIT FINAL ---
   Future<void> _showConfirmSubmitDialog({required bool isBypass}) async {
     final qty = _toNumCurrency(_qtyController.text);
     final int finalHargaPengajuan = _toNumCurrency(_hargaMintaController.text);
+    final int budgetVal = _toNumCurrency(_budgetController.text);
 
     final int unitCalc = isBypass ? 0 : _hargaKalkulasi;
+    final bool isStatusBelum = unitCalc <= 0;
     final bool isUnderCalc =
-        unitCalc > 0 && (finalHargaPengajuan == 0 || finalHargaPengajuan < unitCalc);
+        unitCalc > 0 &&
+        (finalHargaPengajuan == 0 || finalHargaPengajuan < unitCalc);
     if (!isBypass &&
         isUnderCalc &&
         _alasanPengajuanController.text.trim().isEmpty) {
@@ -2087,10 +2215,25 @@ class _PermintaanHargaFormScreenState
                       'Jumlah Order',
                       '${_formatNumberDisplay(qty)} Pcs',
                     ),
+                    if (isStatusBelum || budgetVal > 0) ...[
+                      const SizedBox(height: 6),
+                      _buildConfirmRow(
+                        'Harga Budget Customer',
+                        budgetVal > 0
+                            ? 'Rp ${_formatNumberDisplay(budgetVal)} /pcs'
+                            : '-',
+                        valueColor: const Color(0xFF4F46E5),
+                        isBold: budgetVal > 0,
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     _buildConfirmRow(
                       'Harga Permintaan',
-                      'Rp ${_formatNumberDisplay(finalHargaPengajuan)} /pcs',
+                      finalHargaPengajuan > 0
+                          ? 'Rp ${_formatNumberDisplay(finalHargaPengajuan)} /pcs'
+                          : (isStatusBelum && budgetVal > 0
+                              ? '-'
+                              : 'Rp 0 /pcs'),
                       valueColor: const Color(0xFF059669),
                       isBold: true,
                     ),
@@ -2102,11 +2245,18 @@ class _PermintaanHargaFormScreenState
                       ),
                     ],
                     const SizedBox(height: 6),
-                    _buildConfirmRow(
-                      'Total Order (${_formatNumberDisplay(qty)} Pcs)',
-                      'Rp ${_formatNumberDisplay(_currentOngkirResult.totalOngkir + (finalHargaPengajuan * qty))}',
-                      fontSize: 16,
-                      isBold: true,
+                    Builder(
+                      builder: (context) {
+                        final nominalBasis = finalHargaPengajuan > 0
+                            ? finalHargaPengajuan
+                            : budgetVal;
+                        return _buildConfirmRow(
+                          'Total Order (${_formatNumberDisplay(qty)} Pcs)',
+                          'Rp ${_formatNumberDisplay(_currentOngkirResult.totalOngkir + (nominalBasis * qty))}',
+                          fontSize: 16,
+                          isBold: true,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -2386,7 +2536,9 @@ class _PermintaanHargaFormScreenState
 
     final qty = _toNumCurrency(_qtyController.text);
     final int finalHargaPengajuan = _toNumCurrency(_hargaMintaController.text);
-    final int finalHargaKalkulasi = isDirectBypass ? 0 : _hargaKalkulasi;
+    final bool isBypassEffective = isDirectBypass || _isCustomBahan;
+    final int finalHargaKalkulasi = isBypassEffective ? 0 : _hargaKalkulasi;
+    final int finalBudget = _toNumCurrency(_budgetController.text);
 
     // Susun String ket_kalkulasi sesuai spesifikasi React Native
     String finalKetKalkulasi = _keteranganKalkulasiController.text.trim();
@@ -2428,15 +2580,19 @@ class _PermintaanHargaFormScreenState
     finalKetKalkulasi = ketParts.join('; ');
 
     // Nama Kain Submit
-    String finalSubmitKain = _selectedDivisi == '1'
-        ? _spandukJenisKain
-        : (_selectedDivisi == '5'
-              ? (_currentMmtBahanOptions.firstWhere(
-                      (b) => b['kode'] == _mmtBahanKode,
-                      orElse: () => {'nama': '$_mmtKategori $_mmtBahanKode'},
-                    )['nama'] ??
-                    '$_mmtKategori $_mmtBahanKode')
-              : _garmenJenisKain);
+    String finalSubmitKain = _isCustomBahan
+        ? _customBahanController.text.trim()
+        : (_selectedDivisi == '1'
+              ? _spandukJenisKain
+              : (_selectedDivisi == '5'
+                    ? (_currentMmtBahanOptions.firstWhere(
+                            (b) => b['kode'] == _mmtBahanKode,
+                            orElse: () => {
+                              'nama': '$_mmtKategori $_mmtBahanKode',
+                            },
+                          )['nama'] ??
+                          '$_mmtKategori $_mmtBahanKode')
+                    : _garmenJenisKain));
 
     final payload = <String, dynamic>{
       'mh_divisi': _selectedDivisi,
@@ -2449,8 +2605,13 @@ class _PermintaanHargaFormScreenState
       'mh_ongkir': _currentOngkirResult.totalOngkir,
       'kald_rpkirim': _currentOngkirResult.ongkirPerPcs,
       'mh_harga_kalkulasi': finalHargaKalkulasi,
-      'mh_ket_kalkulasi': isDirectBypass ? '' : finalKetKalkulasi,
-      'mh_budget': 0,
+      'mh_ket_kalkulasi': isBypassEffective ? '' : finalKetKalkulasi,
+      'mh_budget': finalBudget,
+      'budget': finalBudget,
+      'harga_budget': finalBudget,
+      'tanpa_kalkulasi': isBypassEffective,
+      'is_tanpa_kalkulasi': isBypassEffective,
+      'is_custom_kain': _isCustomBahan,
       'mh_dateorder': ymdFormat.format(_rencanaOrderDate),
       'mh_kain': finalSubmitKain,
       'mh_panjang': _toNumDecimal(_panjangController.text),
@@ -2545,8 +2706,8 @@ class _PermintaanHargaFormScreenState
                   ? 'Permintaan harga berhasil diajukan (Status: BELUM)'
                   : (isDone
                         ? (isAutoDoneDivisi
-                            ? 'Permintaan harga berhasil diajukan (Status: DONE - Disetujui Otomatis)'
-                            : 'Permintaan harga berhasil diajukan (Status: BELUM DIVERIFIKASI)')
+                              ? 'Permintaan harga berhasil diajukan (Status: DONE - Disetujui Otomatis)'
+                              : 'Permintaan harga berhasil diajukan (Status: BELUM DIVERIFIKASI)')
                         : (isNego
                               ? 'Permintaan harga berhasil diajukan (Status: NEGO - Menunggu Persetujuan)'
                               : 'Permintaan harga berhasil disimpan')));
@@ -2614,13 +2775,16 @@ class _PermintaanHargaFormScreenState
             // Wizard Step Content
             Expanded(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: ResponsiveHelper.formWidth(context)),
+                    constraints: BoxConstraints(
+                      maxWidth: ResponsiveHelper.formWidth(context),
+                    ),
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -2656,7 +2820,9 @@ class _PermintaanHargaFormScreenState
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.formWidth(context)),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.formWidth(context),
+          ),
           child: Row(
             children: [
               _buildStepItem(
@@ -2664,7 +2830,10 @@ class _PermintaanHargaFormScreenState
                 'Spesifikasi',
                 _currentStep == 1,
                 _currentStep > 1,
-                () => setState(() => _currentStep = 1),
+                () {
+                  setState(() => _currentStep = 1);
+                  _scrollToTop();
+                },
               ),
               _buildStepLine(_currentStep >= 2),
               _buildStepItem(
@@ -2672,11 +2841,11 @@ class _PermintaanHargaFormScreenState
                 'Kalkulasi Harga',
                 _currentStep == 2,
                 _currentStep > 2,
-                _goToStep2,
+                _isCustomBahan ? _showCustomBahanPopup : _goToStep2,
               ),
               _buildStepLine(_currentStep >= 3),
               _buildStepItem(3, 'Review', _currentStep == 3, false, () {
-                if (_currentStep >= 2) _goToStep3();
+                if (_currentStep >= 2 || _isDirectBypass) _goToStep3();
               }),
             ],
           ),
@@ -2777,7 +2946,9 @@ class _PermintaanHargaFormScreenState
         top: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: ResponsiveHelper.formWidth(context)),
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.formWidth(context),
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: _currentStep == 1
@@ -2785,12 +2956,37 @@ class _PermintaanHargaFormScreenState
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        AppButton(
-                          text: 'Kalkulasi Harga ➔',
-                          width: double.infinity,
-                          height: 44,
-                          onPressed: _goToStep2,
-                        ),
+                        if (_isCustomBahan)
+                          SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child: ElevatedButton(
+                              onPressed: _showCustomBahanPopup,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF94A3B8),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Kalkulasi Harga ➔',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          AppButton(
+                            text: 'Kalkulasi Harga ➔',
+                            width: double.infinity,
+                            height: 44,
+                            onPressed: _goToStep2,
+                          ),
                         const SizedBox(height: 8),
                         InkWell(
                           onTap: () {
@@ -2800,7 +2996,11 @@ class _PermintaanHargaFormScreenState
                               AppToast.error(context, errorMessage);
                               return;
                             }
-                            _showConfirmSubmitDialog(isBypass: true);
+                            setState(() {
+                              _isDirectBypass = true;
+                              _currentStep = 3;
+                            });
+                            _scrollToTop();
                           },
                           borderRadius: BorderRadius.circular(10),
                           child: Container(
@@ -2846,8 +3046,10 @@ class _PermintaanHargaFormScreenState
                                     color: Color(0xFFCBD5E1),
                                   ),
                                 ),
-                                onPressed: () =>
-                                    setState(() => _currentStep = 1),
+                                onPressed: () {
+                                  setState(() => _currentStep = 1);
+                                  _scrollToTop();
+                                },
                                 icon: const Icon(
                                   Icons.arrow_back_rounded,
                                   size: 16,
@@ -3622,70 +3824,148 @@ class _PermintaanHargaFormScreenState
           const SizedBox(height: 12),
 
           // Jenis Kain Garmen
-          RichText(
-            text: const TextSpan(
-              text: 'Jenis Kain ',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-              children: [
-                TextSpan(
-                  text: '*',
-                  style: TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontWeight: FontWeight.bold,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              RichText(
+                text: TextSpan(
+                  text: _isCustomBahan
+                      ? 'Jenis Kain Garmen (Bahan Custom) '
+                      : 'Jenis Kain ',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          InkWell(
-            onTap: _showGarmenKainPickerModal,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color:
-                      (_praOrderKainWarning != null && _garmenJenisKain.isEmpty)
-                      ? const Color(0xFFF59E0B)
-                      : const Color(0xFFCBD5E1),
-                  width:
-                      (_praOrderKainWarning != null && _garmenJenisKain.isEmpty)
-                      ? 1.5
-                      : 1.0,
+                  children: const [
+                    TextSpan(
+                      text: '*',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _garmenJenisKain.isNotEmpty
-                        ? _garmenJenisKain
-                        : 'Pilih jenis kain garmen...',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: _garmenJenisKain.isNotEmpty
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: _garmenJenisKain.isNotEmpty
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFF94A3B8),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _isCustomBahan = !_isCustomBahan;
+                    if (_isCustomBahan &&
+                        _customBahanController.text.isEmpty &&
+                        _garmenJenisKain.isNotEmpty) {
+                      _customBahanController.text = _garmenJenisKain;
+                    }
+                  });
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _isCustomBahan
+                        ? const Color(0xFFFEF3C7)
+                        : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _isCustomBahan
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFCBD5E1),
                     ),
                   ),
-                  const Icon(
-                    Icons.arrow_drop_down_rounded,
-                    color: Color(0xFF64748B),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isCustomBahan
+                            ? Icons.edit_note_rounded
+                            : Icons.tune_rounded,
+                        size: 14,
+                        color: _isCustomBahan
+                            ? const Color(0xFFB45309)
+                            : const Color(0xFF475569),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isCustomBahan ? 'Bahan Custom' : 'Input Custom',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isCustomBahan
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (_isCustomBahan) ...[
+            TextFormField(
+              controller: _customBahanController,
+              decoration: const InputDecoration(
+                hintText: 'Ketik jenis kain / bahan garmen custom...',
+                prefixIcon: Icon(Icons.edit_outlined, size: 18),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ] else ...[
+            InkWell(
+              onTap: _showGarmenKainPickerModal,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color:
+                        (_praOrderKainWarning != null &&
+                            _garmenJenisKain.isEmpty)
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFFCBD5E1),
+                    width:
+                        (_praOrderKainWarning != null &&
+                            _garmenJenisKain.isEmpty)
+                        ? 1.5
+                        : 1.0,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _garmenJenisKain.isNotEmpty
+                          ? _garmenJenisKain
+                          : 'Pilih jenis kain garmen...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: _garmenJenisKain.isNotEmpty
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: _garmenJenisKain.isNotEmpty
+                            ? const Color(0xFF0F172A)
+                            : const Color(0xFF94A3B8),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_drop_down_rounded,
+                      color: Color(0xFF64748B),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
           if (_praOrderKainWarning != null && _garmenJenisKain.isEmpty) ...[
             const SizedBox(height: 5),
             Row(
@@ -4115,64 +4395,137 @@ class _PermintaanHargaFormScreenState
           const SizedBox(height: 12),
 
           // Pilihan Jenis Kain Spanduk Dinamis berdasarkan Metode Cetak (Divisi 1)
-          RichText(
-            text: const TextSpan(
-              text: 'Jenis Kain Spanduk ',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-              children: [
-                TextSpan(
-                  text: '*',
-                  style: TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontWeight: FontWeight.bold,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              RichText(
+                text: TextSpan(
+                  text: _isCustomBahan
+                      ? 'Jenis Kain Spanduk (Bahan Custom) '
+                      : 'Jenis Kain Spanduk ',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
                   ),
+                  children: const [
+                    TextSpan(
+                      text: '*',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _availableSpandukKain.map((kain) {
-              final isSel =
-                  _spandukJenisKain.toUpperCase() == kain.toUpperCase();
-              return InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _handleSelectSpandukKain(kain),
+              ),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _isCustomBahan = !_isCustomBahan;
+                    if (_isCustomBahan &&
+                        _customBahanController.text.isEmpty &&
+                        _spandukJenisKain.isNotEmpty) {
+                      _customBahanController.text = _spandukJenisKain;
+                    }
+                  });
+                },
+                borderRadius: BorderRadius.circular(6),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
+                    horizontal: 8,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isSel ? const Color(0xFFEEF2FF) : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
+                    color: _isCustomBahan
+                        ? const Color(0xFFFEF3C7)
+                        : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isSel
-                          ? const Color(0xFF4F46E5)
+                      color: _isCustomBahan
+                          ? const Color(0xFFF59E0B)
                           : const Color(0xFFCBD5E1),
-                      width: isSel ? 1.5 : 1,
                     ),
                   ),
-                  child: Text(
-                    kain,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
-                      color: isSel
-                          ? const Color(0xFF4F46E5)
-                          : const Color(0xFF475569),
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isCustomBahan
+                            ? Icons.edit_note_rounded
+                            : Icons.tune_rounded,
+                        size: 14,
+                        color: _isCustomBahan
+                            ? const Color(0xFFB45309)
+                            : const Color(0xFF475569),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isCustomBahan ? 'Bahan Custom' : 'Input Custom',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isCustomBahan
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+            ],
           ),
+          const SizedBox(height: 6),
+          if (_isCustomBahan) ...[
+            TextFormField(
+              controller: _customBahanController,
+              decoration: const InputDecoration(
+                hintText: 'Ketik jenis kain spanduk custom...',
+                prefixIcon: Icon(Icons.edit_outlined, size: 18),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ] else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _availableSpandukKain.map((kain) {
+                final isSel =
+                    _spandukJenisKain.toUpperCase() == kain.toUpperCase();
+                return InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _handleSelectSpandukKain(kain),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSel ? const Color(0xFFEEF2FF) : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSel
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFFCBD5E1),
+                        width: isSel ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      kain,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                        color: isSel
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
           const SizedBox(height: 12),
 
           // Pilihan Lebar Dinamis yang Difilter Berdasarkan Metode & Jenis Kain (Divisi 1)
@@ -4590,50 +4943,133 @@ class _PermintaanHargaFormScreenState
           const SizedBox(height: 12),
 
           // Bahan MMT (Chip Buttons seperti React Native)
-          const Text(
-            'Pilihan Bahan MMT *',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _currentMmtBahanOptions.map((b) {
-              final isSel = _mmtBahanKode == b['kode'];
-              return InkWell(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              RichText(
+                text: TextSpan(
+                  text: _isCustomBahan
+                      ? 'Pilihan Bahan MMT (Bahan Custom) '
+                      : 'Pilihan Bahan MMT ',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                  children: const [
+                    TextSpan(
+                      text: '*',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
                 onTap: () {
-                  setState(() => _mmtBahanKode = b['kode']!);
-                  _updateMmtKeteranganKalkulasi();
+                  setState(() {
+                    _isCustomBahan = !_isCustomBahan;
+                  });
                 },
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(6),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                    horizontal: 8,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isSel
-                        ? const Color(0xFF4F46E5)
+                    color: _isCustomBahan
+                        ? const Color(0xFFFEF3C7)
                         : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isSel
-                          ? const Color(0xFF4F46E5)
-                          : const Color(0xFFE2E8F0),
+                      color: _isCustomBahan
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFCBD5E1),
                     ),
                   ),
-                  child: Text(
-                    b['nama'] ?? b['kode']!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
-                      color: isSel ? Colors.white : const Color(0xFF334155),
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isCustomBahan
+                            ? Icons.edit_note_rounded
+                            : Icons.tune_rounded,
+                        size: 14,
+                        color: _isCustomBahan
+                            ? const Color(0xFFB45309)
+                            : const Color(0xFF475569),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isCustomBahan ? 'Bahan Custom' : 'Input Custom',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isCustomBahan
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }).toList(),
+              ),
+            ],
           ),
+          const SizedBox(height: 6),
+          if (_isCustomBahan) ...[
+            TextFormField(
+              controller: _customBahanController,
+              decoration: const InputDecoration(
+                hintText: 'Ketik nama bahan MMT custom...',
+                prefixIcon: Icon(Icons.edit_outlined, size: 18),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ] else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _currentMmtBahanOptions.map((b) {
+                final isSel = _mmtBahanKode == b['kode'];
+                return InkWell(
+                  onTap: () {
+                    setState(() => _mmtBahanKode = b['kode']!);
+                    _updateMmtKeteranganKalkulasi();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? const Color(0xFF4F46E5)
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSel
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Text(
+                      b['nama'] ?? b['kode']!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                        color: isSel ? Colors.white : const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
           const SizedBox(height: 12),
 
           // Dimensi P x L & Qty
@@ -5008,7 +5444,8 @@ class _PermintaanHargaFormScreenState
                 () {
                   setState(() {
                     _ongkirMode = 'DENGAN_ONGKIR';
-                    if (_alokasiOngkir == 'Tanpa Ongkir' || _alokasiOngkir.isEmpty) {
+                    if (_alokasiOngkir == 'Tanpa Ongkir' ||
+                        _alokasiOngkir.isEmpty) {
                       _alokasiOngkir = '';
                     }
                   });
@@ -7466,7 +7903,10 @@ class _PermintaanHargaFormScreenState
                 ),
               ),
               InkWell(
-                onTap: () => setState(() => _currentStep = 1),
+                onTap: () {
+                  setState(() => _currentStep = 1);
+                  _scrollToTop();
+                },
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -7749,10 +8189,7 @@ class _PermintaanHargaFormScreenState
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(4),
@@ -7945,10 +8382,7 @@ class _PermintaanHargaFormScreenState
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '* Unggah sample desain (Opsional)',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: Color(0xFF94A3B8),
-                  ),
+                  style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
                 ),
               ),
             ],
@@ -8054,13 +8488,20 @@ class _PermintaanHargaFormScreenState
                 ),
                 _buildReviewRow(
                   'Kain & Warna:',
-                  '$_garmenJenisKain ($_garmenWarna)',
+                  _isCustomBahan
+                      ? '${_customBahanController.text.trim()}'
+                      : '$_garmenJenisKain ($_garmenWarna)',
+                  isBold: _isCustomBahan,
+                  valueColor: _isCustomBahan ? const Color(0xFF4F46E5) : null,
                 ),
               ] else if (_selectedDivisi == '1') ...[
                 _buildReviewRow(
                   'Jenis Kain Spanduk:',
-                  _spandukJenisKain,
+                  _isCustomBahan
+                      ? '${_customBahanController.text.trim()}'
+                      : _spandukJenisKain,
                   isBold: true,
+                  valueColor: _isCustomBahan ? const Color(0xFF4F46E5) : null,
                 ),
                 _buildReviewRow(
                   'Ukuran (P x L):',
@@ -8069,8 +8510,11 @@ class _PermintaanHargaFormScreenState
               ] else ...[
                 _buildReviewRow(
                   'Kategori & Bahan:',
-                  '$_mmtKategori - $_mmtBahanKode',
+                  _isCustomBahan
+                      ? '$_mmtKategori - ${_customBahanController.text.trim()}'
+                      : '$_mmtKategori - $_mmtBahanKode',
                   isBold: true,
+                  valueColor: _isCustomBahan ? const Color(0xFF4F46E5) : null,
                 ),
                 _buildReviewRow(
                   'Ukuran (P x L):',
@@ -8152,62 +8596,397 @@ class _PermintaanHargaFormScreenState
               ],
               const Divider(height: 20),
 
-              // Final Price Summary Box (reviewPriceBox)
-              Builder(
-                builder: (context) {
-                  final num ongkirPcs = _currentOngkirResult.isFreeCharge
-                      ? 0
-                      : _currentOngkirResult.ongkirPerPcs;
-                  final num totalOngkir = _currentOngkirResult.isFreeCharge
-                      ? 0
-                      : _currentOngkirResult.totalOngkir;
-                  final bool hasOngkir =
-                      !_currentOngkirResult.isFreeCharge &&
-                      _currentOngkirResult.totalOngkir > 0;
-
-                  final int dppPerPcs = _includePpn
-                      ? (_hargaKalkulasi / 1.11).round()
-                      : _hargaKalkulasi;
-                  final int ppnPerPcs = _includePpn
-                      ? (_hargaKalkulasi - dppPerPcs)
-                      : 0;
-                  final int hargaDasarProduksiPerPcs = (dppPerPcs - ongkirPcs)
-                      .clamp(0, double.infinity)
-                      .round();
-
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF86EFAC),
-                        width: 1.2,
-                      ),
+              // Final Price Summary Box (reviewPriceBox) / Tanpa Kalkulasi Card
+              if (_isDirectBypass)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFFFCD34D),
+                      width: 1.2,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header Card & Badges
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.calculate_rounded,
-                              size: 22,
-                              color: Color(0xFF15803D),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFDE68A),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
+                            child: const Icon(
+                              Icons.edit_note_rounded,
+                              size: 20,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'PERMINTAAN HARGA (TANPA KALKULASI)',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Bahan custom/bebas • Menunggu estimasi tim MO / Finance',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFFB45309),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      // const Divider(height: 20, color: Color(0xFFFDE68A)),
+                      // Row(
+                      //   crossAxisAlignment: CrossAxisAlignment.start,
+                      //   children: const [
+                      //     Icon(
+                      //       Icons.info_outline_rounded,
+                      //       size: 16,
+                      //       color: Color(0xFFB45309),
+                      //     ),
+                      //     SizedBox(width: 8),
+                      //     Expanded(
+                      //       child: Text(
+                      //         'Item ini diajukan langsung tanpa kalkulasi rumus otomatis. Tim MO / Finance akan meninjau spesifikasi dan memberikan harga kalkulasi di sistem Manksi.',
+                      //         style: TextStyle(
+                      //           fontSize: 11.5,
+                      //           height: 1.4,
+                      //           color: Color(0xFF78350F),
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
+                    ],
+                  ),
+                )
+              else
+                Builder(
+                  builder: (context) {
+                    final num ongkirPcs = _currentOngkirResult.isFreeCharge
+                        ? 0
+                        : _currentOngkirResult.ongkirPerPcs;
+                    final num totalOngkir = _currentOngkirResult.isFreeCharge
+                        ? 0
+                        : _currentOngkirResult.totalOngkir;
+                    final bool hasOngkir =
+                        !_currentOngkirResult.isFreeCharge &&
+                        _currentOngkirResult.totalOngkir > 0;
+
+                    final int dppPerPcs = _includePpn
+                        ? (_hargaKalkulasi / 1.11).round()
+                        : _hargaKalkulasi;
+                    final int ppnPerPcs = _includePpn
+                        ? (_hargaKalkulasi - dppPerPcs)
+                        : 0;
+                    final int hargaDasarProduksiPerPcs = (dppPerPcs - ongkirPcs)
+                        .clamp(0, double.infinity)
+                        .round();
+
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF86EFAC),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header Card & Badges
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.calculate_rounded,
+                                size: 22,
+                                color: Color(0xFF15803D),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'HASIL KALKULASI SISTEM',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.5,
+                                        color: Color(0xFF166534),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Badges Status Include PPN & Ongkir
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              // Badge PPN
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _includePpn
+                                      ? const Color(0xFFDCFCE7)
+                                      : const Color(0xFFE0F2FE),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _includePpn
+                                        ? const Color(0xFF86EFAC)
+                                        : const Color(0xFFBAE6FD),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _includePpn
+                                          ? Icons.check_circle_rounded
+                                          : Icons.info_outline_rounded,
+                                      size: 13,
+                                      color: _includePpn
+                                          ? const Color(0xFF15803D)
+                                          : const Color(0xFF0369A1),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _includePpn
+                                          ? 'Termasuk PPN (11%)'
+                                          : 'Non PPN (Exclude)',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: _includePpn
+                                            ? const Color(0xFF15803D)
+                                            : const Color(0xFF0369A1),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Badge Ongkir
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _currentOngkirResult.isFreeCharge
+                                      ? const Color(0xFFDCFCE7)
+                                      : (hasOngkir
+                                            ? const Color(0xFFFEF3C7)
+                                            : const Color(0xFFF1F5F9)),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _currentOngkirResult.isFreeCharge
+                                        ? const Color(0xFF86EFAC)
+                                        : (hasOngkir
+                                              ? const Color(0xFFFDE68A)
+                                              : const Color(0xFFCBD5E1)),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _currentOngkirResult.isFreeCharge
+                                          ? Icons.local_shipping_rounded
+                                          : (hasOngkir
+                                                ? Icons.check_circle_rounded
+                                                : Icons
+                                                      .remove_circle_outline_rounded),
+                                      size: 13,
+                                      color: _currentOngkirResult.isFreeCharge
+                                          ? const Color(0xFF15803D)
+                                          : (hasOngkir
+                                                ? const Color(0xFFB45309)
+                                                : const Color(0xFF64748B)),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _currentOngkirResult.isFreeCharge
+                                          ? 'Bebas Ongkir'
+                                          : (hasOngkir
+                                                ? 'Termasuk Ongkir (${_currentOngkirResult.alokasi})'
+                                                : 'Tanpa Ongkir'),
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: _currentOngkirResult.isFreeCharge
+                                            ? const Color(0xFF15803D)
+                                            : (hasOngkir
+                                                  ? const Color(0xFF92400E)
+                                                  : const Color(0xFF64748B)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const Divider(height: 20, color: Color(0xFFBBF7D0)),
+
+                          // 1. Biaya Produksi / Harga Dasar
+                          _buildReviewRow(
+                            '• Kalkulasi (Non PPN):',
+                            'Rp ${_formatNumberDisplay(hargaDasarProduksiPerPcs)} /Pcs',
+                            fontSize: 12,
+                            letterSpacing: 1,
+                            valueColor: const Color(0xFF334155),
+                          ),
+                          const SizedBox(height: 3),
+
+                          // 2. Ongkir
+                          _buildReviewRow(
+                            '• Biaya Ongkir (${_currentOngkirResult.alokasi}):',
+                            _currentOngkirResult.isFreeCharge
+                                ? 'Rp 0 (Gratis Ongkir)'
+                                : (hasOngkir
+                                      ? '+ Rp ${_formatNumberDisplay(ongkirPcs)} /Pcs'
+                                      : 'Rp 0 (Tanpa Pengiriman)'),
+                            fontSize: 12,
+                            valueColor: hasOngkir
+                                ? const Color(0xFFB45309)
+                                : const Color(0xFF334155),
+                          ),
+                          const SizedBox(height: 3),
+
+                          // 3. PPN 11%
+                          _buildReviewRow(
+                            '• PPN (11%):',
+                            _includePpn
+                                ? '+ Rp ${_formatNumberDisplay(ppnPerPcs)} /Pcs'
+                                : 'Rp 0 (Exc PPN)',
+                            fontSize: 12,
+                            valueColor: _includePpn
+                                ? const Color(0xFF15803D)
+                                : const Color(0xFF334155),
+                          ),
+
+                          const Divider(height: 18, color: Color(0xFFBBF7D0)),
+
+                          // HASIL TOTAL PER PCS & KESELURUHAN
+                          _buildReviewRow(
+                            'Hasil Kalkulasi Sistem (Final /Pcs):',
+                            'Rp ${_formatNumberDisplay(_hargaKalkulasi)} /Pcs',
+                            isBold: true,
+                            valueColor: const Color(0xFF15803D),
+                            fontSize: 14.5,
+                          ),
+                          const SizedBox(height: 4),
+                          _buildReviewRow(
+                            'Total Order ($qty Pcs):',
+                            'Rp ${_formatNumberDisplay(_hargaKalkulasi * qty)}',
+                            isBold: true,
+                            valueColor: const Color(0xFF15803D),
+                            fontSize: 16,
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          // CALLOUT BOX INFORMASI PENJELAS
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFBBF7D0),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.info_rounded,
+                                  size: 16,
+                                  color: Color(0xFF16A34A),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Harga di atas SUDAH INCLUDE '
+                                    '${hasOngkir ? "ongkir ke ${_namaDaerahKirimController.text.isNotEmpty ? _namaDaerahKirimController.text : "tujuan"} (Rp ${_formatNumberDisplay(totalOngkir)})" : (_currentOngkirResult.isFreeCharge ? "Gratis Ongkir" : "tanpa ongkir")}'
+                                    ' dan ${_includePpn ? "sudah termasuk PPN 11%" : "belum termasuk PPN"}.',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      height: 1.35,
+                                      color: Color(0xFF166534),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          if (_keteranganKalkulasiController
+                              .text
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFFDCFCE7,
+                                ).withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'HASIL KALKULASI SISTEM',
+                                    'Ket. Kalkulasi:',
                                     style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF166534),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _keteranganKalkulasiController.text,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
                                       color: Color(0xFF166534),
                                     ),
                                   ),
@@ -8215,261 +8994,11 @@ class _PermintaanHargaFormScreenState
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Badges Status Include PPN & Ongkir
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            // Badge PPN
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _includePpn
-                                    ? const Color(0xFFDCFCE7)
-                                    : const Color(0xFFE0F2FE),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _includePpn
-                                      ? const Color(0xFF86EFAC)
-                                      : const Color(0xFFBAE6FD),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _includePpn
-                                        ? Icons.check_circle_rounded
-                                        : Icons.info_outline_rounded,
-                                    size: 13,
-                                    color: _includePpn
-                                        ? const Color(0xFF15803D)
-                                        : const Color(0xFF0369A1),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _includePpn
-                                        ? 'Termasuk PPN (11%)'
-                                        : 'Non PPN (Exclude)',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: _includePpn
-                                          ? const Color(0xFF15803D)
-                                          : const Color(0xFF0369A1),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Badge Ongkir
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _currentOngkirResult.isFreeCharge
-                                    ? const Color(0xFFDCFCE7)
-                                    : (hasOngkir
-                                          ? const Color(0xFFFEF3C7)
-                                          : const Color(0xFFF1F5F9)),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _currentOngkirResult.isFreeCharge
-                                      ? const Color(0xFF86EFAC)
-                                      : (hasOngkir
-                                            ? const Color(0xFFFDE68A)
-                                            : const Color(0xFFCBD5E1)),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _currentOngkirResult.isFreeCharge
-                                        ? Icons.local_shipping_rounded
-                                        : (hasOngkir
-                                              ? Icons.check_circle_rounded
-                                              : Icons
-                                                    .remove_circle_outline_rounded),
-                                    size: 13,
-                                    color: _currentOngkirResult.isFreeCharge
-                                        ? const Color(0xFF15803D)
-                                        : (hasOngkir
-                                              ? const Color(0xFFB45309)
-                                              : const Color(0xFF64748B)),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _currentOngkirResult.isFreeCharge
-                                        ? 'Bebas Ongkir'
-                                        : (hasOngkir
-                                              ? 'Termasuk Ongkir (${_currentOngkirResult.alokasi})'
-                                              : 'Tanpa Ongkir'),
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: _currentOngkirResult.isFreeCharge
-                                          ? const Color(0xFF15803D)
-                                          : (hasOngkir
-                                                ? const Color(0xFF92400E)
-                                                : const Color(0xFF64748B)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const Divider(height: 20, color: Color(0xFFBBF7D0)),
-
-                        // 1. Biaya Produksi / Harga Dasar
-                        _buildReviewRow(
-                          '• Kalkulasi (Non PPN):',
-                          'Rp ${_formatNumberDisplay(hargaDasarProduksiPerPcs)} /Pcs',
-                          fontSize: 12,
-                          letterSpacing: 1,
-                          valueColor: const Color(0xFF334155),
-                        ),
-                        const SizedBox(height: 3),
-
-                        // 2. Ongkir
-                        _buildReviewRow(
-                          '• Biaya Ongkir (${_currentOngkirResult.alokasi}):',
-                          _currentOngkirResult.isFreeCharge
-                              ? 'Rp 0 (Gratis Ongkir)'
-                              : (hasOngkir
-                                    ? '+ Rp ${_formatNumberDisplay(ongkirPcs)} /Pcs'
-                                    : 'Rp 0 (Tanpa Pengiriman)'),
-                          fontSize: 12,
-                          valueColor: hasOngkir
-                              ? const Color(0xFFB45309)
-                              : const Color(0xFF334155),
-                        ),
-                        const SizedBox(height: 3),
-
-                        // 3. PPN 11%
-                        _buildReviewRow(
-                          '• PPN (11%):',
-                          _includePpn
-                              ? '+ Rp ${_formatNumberDisplay(ppnPerPcs)} /Pcs'
-                              : 'Rp 0 (Exc PPN)',
-                          fontSize: 12,
-                          valueColor: _includePpn
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFF334155),
-                        ),
-
-                        const Divider(height: 18, color: Color(0xFFBBF7D0)),
-
-                        // HASIL TOTAL PER PCS & KESELURUHAN
-                        _buildReviewRow(
-                          'Hasil Kalkulasi Sistem (Final /Pcs):',
-                          'Rp ${_formatNumberDisplay(_hargaKalkulasi)} /Pcs',
-                          isBold: true,
-                          valueColor: const Color(0xFF15803D),
-                          fontSize: 14.5,
-                        ),
-                        const SizedBox(height: 4),
-                        _buildReviewRow(
-                          'Total Order ($qty Pcs):',
-                          'Rp ${_formatNumberDisplay(_hargaKalkulasi * qty)}',
-                          isBold: true,
-                          valueColor: const Color(0xFF15803D),
-                          fontSize: 16,
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        // CALLOUT BOX INFORMASI PENJELAS
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(
-                                Icons.info_rounded,
-                                size: 16,
-                                color: Color(0xFF16A34A),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Harga di atas SUDAH INCLUDE '
-                                  '${hasOngkir ? "ongkir ke ${_namaDaerahKirimController.text.isNotEmpty ? _namaDaerahKirimController.text : "tujuan"} (Rp ${_formatNumberDisplay(totalOngkir)})" : (_currentOngkirResult.isFreeCharge ? "Gratis Ongkir" : "tanpa ongkir")}'
-                                  ' dan ${_includePpn ? "sudah termasuk PPN 11%" : "belum termasuk PPN"}.',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.35,
-                                    color: Color(0xFF166534),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        if (_keteranganKalkulasiController.text.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(
-                                0xFFDCFCE7,
-                              ).withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Ket. Kalkulasi:',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF166534),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _keteranganKalkulasiController.text,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontStyle: FontStyle.italic,
-                                    color: Color(0xFF166534),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
-                      ],
-                    ),
-                  );
-                },
-              ),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -8627,9 +9156,9 @@ class _PermintaanHargaFormScreenState
                           so['so_nama2']?.toString() ??
                           so['nama_barang']?.toString() ??
                           'Pekerjaan Tanpa Nama';
-                      final numQty = (so['so_jumlah'] ?? so['qty'] ?? 0) as num;
+                      final numQty = _toNumAny(so['so_jumlah'] ?? so['qty']);
                       final numHarga =
-                          (so['so_harga'] ?? so['harga'] ?? 0) as num;
+                          _toNumAny(so['so_harga'] ?? so['harga']);
                       final totalNominal = numQty * numHarga;
                       final kain = so['so_kain']?.toString() ?? '';
                       final ukuran =
@@ -8882,61 +9411,92 @@ class _PermintaanHargaFormScreenState
               ),
               const SizedBox(height: 12),
 
-              // Info Pembanding Harga Standar Kalkulasi
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Kalkulasi Sistem (${_includePpn ? "Inc. PPN" : "Exc. PPN"}${!_currentOngkirResult.isFreeCharge && _currentOngkirResult.totalOngkir > 0 ? " & Ongkir" : ""}):',
+              // Info Pembanding Harga Standar Kalkulasi (Hanya jika ada kalkulasi sistem)
+              if (!_isDirectBypass && _hargaKalkulasi > 0) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Kalkulasi Sistem (${_includePpn ? "Inc. PPN" : "Exc. PPN"}${!_currentOngkirResult.isFreeCharge && _currentOngkirResult.totalOngkir > 0 ? " & Ongkir" : ""}):',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'Rp ${_formatNumberDisplay(_hargaKalkulasi)} /pcs',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total ($qty Pcs):',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
                             ),
                           ),
-                        ),
-                        Text(
-                          'Rp ${_formatNumberDisplay(_hargaKalkulasi)} /pcs',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
+                          Text(
+                            'Rp ${_formatNumberDisplay(_hargaKalkulasi * qty)}',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Total ($qty Pcs):',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                        Text(
-                          'Rp ${_formatNumberDisplay(_hargaKalkulasi * qty)}',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 12),
+              ],
+
+              // Input Harga Budget Customer (Target dari Klien)
+              RichText(
+                text: TextSpan(
+                  text: 'Harga Budget Customer',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Target harga per pcs yang diinginkan customer sebagai acuan penawaran / kalkulasi MO.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _budgetController,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [_thousandsSeparatorInputFormatter],
+                decoration: const InputDecoration(
+                  prefixText: 'Rp ',
+                  hintText: 'Masukkan target budget customer...',
+                ),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
 
@@ -8984,13 +9544,18 @@ class _PermintaanHargaFormScreenState
                   ),
                   children: [
                     TextSpan(
-                      text: (finalHarga == 0 || finalHarga < _hargaKalkulasi) &&
-                              _hargaKalkulasi > 0
-                          ? '(Wajib Diisi)*'
-                          : '(Opsional)',
+                      text: _isDirectBypass
+                          ? '(Opsional)'
+                          : ((finalHarga == 0 ||
+                                        finalHarga < _hargaKalkulasi) &&
+                                    _hargaKalkulasi > 0
+                                ? '(Wajib Diisi)*'
+                                : '(Opsional)'),
                       style: TextStyle(
                         fontSize: 11,
-                        color: (finalHarga == 0 ||
+                        color:
+                            !_isDirectBypass &&
+                                (finalHarga == 0 ||
                                     finalHarga < _hargaKalkulasi) &&
                                 _hargaKalkulasi > 0
                             ? const Color(0xFFEF4444)
@@ -9068,14 +9633,19 @@ class _PermintaanHargaFormScreenState
                       ),
                       side: const BorderSide(color: Color(0xFFCBD5E1)),
                     ),
-                    onPressed: () => setState(() => _currentStep = 2),
+                    onPressed: () {
+                      setState(() => _currentStep = _isDirectBypass ? 1 : 2);
+                      _scrollToTop();
+                    },
                     icon: const Icon(
                       Icons.arrow_back_rounded,
                       size: 16,
                       color: Color(0xFF475569),
                     ),
                     label: Text(
-                      isSmallScreen ? 'Hitung' : 'Hitung Ulang',
+                      _isDirectBypass
+                          ? 'Ubah Spek'
+                          : (isSmallScreen ? 'Hitung' : 'Hitung Ulang'),
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF475569),
@@ -9092,7 +9662,8 @@ class _PermintaanHargaFormScreenState
                     text: _isEditMode ? 'Simpan Perubahan' : 'Kirim Pengajuan',
                     icon: Icons.send_rounded,
                     isLoading: _isSubmitting,
-                    onPressed: () => _showConfirmSubmitDialog(isBypass: false),
+                    onPressed: () =>
+                        _showConfirmSubmitDialog(isBypass: _isDirectBypass),
                   ),
                 ),
               ],
@@ -9166,6 +9737,10 @@ class _PermintaanHargaFormScreenState
       _keteranganKalkulasiController.text = 'INC PPN';
       _isCustomOngkir = false;
       _customOngkirValController.clear();
+      _isCustomBahan = false;
+      _customBahanController.clear();
+      _budgetController.clear();
+      _isDirectBypass = false;
 
       // 6. Reset pra-order jika divisi pra-order berbeda dengan divisi baru
       if (_selectedPraOrderDetail != null) {
@@ -9767,17 +10342,16 @@ class _PermintaanHargaFormScreenState
   List<Map<String, dynamic>> get _availableMmtToppingOptions {
     final raw = _masterOptions?['topping'] as List<dynamic>?;
     if (raw != null) {
-      return raw
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .where((item) {
-            final kode = (item['kode'] ?? '').toString().toUpperCase();
-            final nama = (item['nama'] ?? '').toString().toUpperCase();
-            final kat = (item['kategori'] ?? '').toString().toUpperCase();
-            return !kode.contains('SELONGSONG') &&
-                !nama.contains('SELONGSONG') &&
-                !kat.contains('SELONGSONG');
-          })
-          .toList();
+      return raw.map((item) => Map<String, dynamic>.from(item as Map)).where((
+        item,
+      ) {
+        final kode = (item['kode'] ?? '').toString().toUpperCase();
+        final nama = (item['nama'] ?? '').toString().toUpperCase();
+        final kat = (item['kategori'] ?? '').toString().toUpperCase();
+        return !kode.contains('SELONGSONG') &&
+            !nama.contains('SELONGSONG') &&
+            !kat.contains('SELONGSONG');
+      }).toList();
     }
     return [];
   }
@@ -10017,13 +10591,8 @@ class _PermintaanHargaFormScreenState
                                       _garmenJenisKain = name;
                                       _praOrderKainWarning = null;
                                       _garmenKategoriKain = derivedKtg;
-                                      final autoGramasi = getGramasiByKain(
-                                        name,
-                                      );
-                                      if (autoGramasi.isNotEmpty &&
-                                          _gramasiController.text.isEmpty) {
-                                        _gramasiController.text = autoGramasi;
-                                      }
+                                      _gramasiController.text =
+                                          getGramasiByKain(name);
                                     });
                                     _loadGarmenCetakOptions();
                                     _loadGarmenTambahanOptions();
@@ -10093,7 +10662,7 @@ class _PermintaanHargaFormScreenState
                     final item = _garmenTambahanMaster[idx];
                     final ket =
                         item['mha_ket'] ?? item['ket'] ?? item['nama'] ?? '';
-                    final tarif = (item['mha_rp'] ?? item['tarif'] ?? 0) as num;
+                    final tarif = _toNumAny(item['mha_rp'] ?? item['tarif']);
                     return ListTile(
                       title: Text(
                         ket,
@@ -10667,13 +11236,11 @@ class _PermintaanHargaFormScreenState
                                     item['nama'] ??
                                     jenis)
                                 .toString();
-                        final biaya =
-                            ((item['mhb_rp'] ??
-                                        item['mhb_biaya'] ??
-                                        item['biaya'] ??
-                                        0)
-                                    as num)
-                                .toInt();
+                        final biaya = _toNumAny(
+                          item['mhb_rp'] ??
+                              item['mhb_biaya'] ??
+                              item['biaya'],
+                        ).toInt();
                         final desc = getSablonUkuranDesc(ket);
 
                         return ListTile(

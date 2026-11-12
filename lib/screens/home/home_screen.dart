@@ -529,8 +529,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 limit: 100,
               )
             : Future.value(<PenawaranListItem>[]),
-        // 10: invoice jatuh tempo (seluruh tagihan overdue tanpa batas tanggal)
-        jatuhTempoRepo.getInvoiceJatuhTempo(),
+        // 10: invoice jatuh tempo (seluruh tagihan overdue kumulatif s/d bulan aplikasi)
+        jatuhTempoRepo.getInvoiceJatuhTempo(
+          month: now.month,
+          year: now.year,
+        ),
       ]);
 
       if (mounted) {
