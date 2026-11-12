@@ -79,10 +79,16 @@ const getInvoiceJatuhTempo = async (req, res) => {
             }
         }
 
+        const now = new Date();
+        const month = req.query.month ? Number(req.query.month) : (now.getMonth() + 1);
+        const year = req.query.year ? Number(req.query.year) : now.getFullYear();
+
         const data = await inkasoService.getInvoiceJatuhTempo({
             salesKode: targetSales,
             search: String(req.query.search || "").trim(),
             status: String(req.query.status || "").trim(),
+            month,
+            year,
             page: req.query.page || 1,
             limit: req.query.limit || 5000,
         });

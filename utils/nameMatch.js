@@ -47,7 +47,7 @@ module.exports = async function NameMatch(db, loginName) {
                 )
             ),
             ' ') AS nama_padded
-        FROM kpi.v_mkt_omset
+        FROM ${process.env.DB_NAME_ACH}.v_mkt_omset
         ) v
         WHERE
         v.nama_norm = ?

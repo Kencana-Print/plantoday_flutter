@@ -64,12 +64,12 @@ const getAchievementRange = async ({
             CASE WHEN COALESCE(SUM(o.realisasi), 0) > 0 THEN 100 ELSE 0 END
         ELSE ROUND((COALESCE(SUM(o.realisasi), 0) / COALESCE(SUM(t.target), 0)) * 100, 2)
         END AS ach
-    FROM kpi.v_target_mkt_monthly t
-    JOIN kencanaprint.tsales s ON (
+    FROM ${process.env.DB_NAME_ACH}.v_target_mkt_monthly t
+    JOIN ${process.env.DB_NAME_PENAWARAN}.tsales s ON (
         t.kode_sales = s.sal_kode 
         OR (t.kode_sales = 'MO' AND s.sal_jabatan = 'CMO')
     )
-    LEFT JOIN kpi.v_mkt_omset o ON s.sal_kode = o.kode AND t.tahun = o.tahun AND t.bulan = o.bulan
+    LEFT JOIN ${process.env.DB_NAME_ACH}.v_mkt_omset o ON s.sal_kode = o.kode AND t.tahun = o.tahun AND t.bulan = o.bulan
     WHERE
         s.sal_jabatan != 'MO'
         AND

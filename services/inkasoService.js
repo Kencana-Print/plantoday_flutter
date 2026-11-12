@@ -216,170 +216,178 @@ const buildResult = (rows, pageNum, limitNum, totalBatal = 0) => {
 };
 
 /**
- * Mengambil data Proyeksi Inkaso / Invoice Jatuh Tempo dengan hierarki status:
- * Proforma (1) -> Tidak Normal (2) -> Normal (3)
- * Mendeteksi relasi formal (tinv_flag, inv_invpro) dan relasi keterangan (inv_keterangan regex)
+ * Mengambil data Invoice Jatuh Tempo berdasarkan logika Laporan Rekap Piutang Manksi Web:
+ * - Sumber: piutang_debet p (flag = 0, is_writeoff = 0, exclude 'INV YG DIKIRIM')
+ * - Hanya invoice yang sudah jatuh tempo: p.tanggal_tempo <= CURDATE() dan p.tanggal_tempo <= dEnd
+ * - Kumulatif s/d bulan aplikasi (p.tanggal <= dEnd)
+ * - Koreksi debet & bayar/kredit tak-normal via tinv_flag
+ * - Hierarki status: Proforma (1) -> Tidak Normal (2) -> Normal (3)
+ * - Sisa > toleransi (1000)
  */
 const getInvoiceJatuhTempo = async ({
     salesKode = null,
     search = "",
     status = "",
+    month = null,
+    year = null,
     page = 1,
     limit = 5000,
 }) => {
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.max(1, Number(limit) || 5000);
 
-    const params = [];
-    const batalParams = [];
-    let filterSql = "";
-    let batalSalesFilterSql = "";
+    const now = new Date();
+    const m = month ? Number(month) : now.getMonth() + 1;
+    const y = year ? Number(year) : now.getFullYear();
+    const lastDay = new Date(y, m, 0).getDate();
+    const dEnd = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+    // Batas invoice terbit 2 bulan yang lalu dan seterusnya (kumulatif):
+    // Misal aplikasi di bulan 11 (November), invoice tampil yang terbit s/d akhir bulan 9 (September)
+    const cutoffDate = new Date(y, m - 2, 0);
+    const dCutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
+
+    const baseParams = [dEnd, dCutoff, dEnd];
+    const outerParams = [];
+    let outerFilterSql = "";
 
     if (salesKode) {
-        filterSql +=
-            " AND (k.pik_sal_kode = ? OR s.sal_nama = ? OR s.sal_nama LIKE ?) ";
-        params.push(salesKode, salesKode, `%${salesKode}%`);
-
-        batalSalesFilterSql =
-            " AND (k.pik_sal_kode = ? OR s.sal_nama = ? OR s.sal_nama LIKE ?) ";
-        batalParams.push(salesKode, salesKode, `%${salesKode}%`);
+        outerFilterSql +=
+            " AND (src.SalKode = ? OR s.sal_nama = ? OR s.sal_nama LIKE ?) ";
+        outerParams.push(salesKode, salesKode, `%${salesKode}%`);
     }
 
-    // Resolusi Nota & Status: Proforma -> Tidak Normal -> Normal
-    const resolvedNotaExpr = `
-      CASE
-        WHEN h.inv_sts_pro = 1 THEN k.pik_nota
-        WHEN TRIM(IFNULL(h.inv_invpro, '')) <> '' THEN TRIM(h.inv_invpro)
-        WHEN h_ref.inv_sts_pro = 1 THEN h_ref.inv_nomor
-        WHEN h.inv_sts_pro = 2 THEN k.pik_nota
-        WHEN tfm.taknormal IS NOT NULL THEN tfm.taknormal
-        WHEN h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN h_ref.inv_nomor
-        ELSE k.pik_nota
-      END
-    `;
-
-    const resolvedStatusExpr = `
-      CASE
-        WHEN h.inv_sts_pro = 1 OR TRIM(IFNULL(h.inv_invpro, '')) <> '' OR h_ref.inv_sts_pro = 1 THEN 'Proforma'
-        WHEN h.inv_sts_pro = 2 OR tfm.taknormal IS NOT NULL OR h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN 'Tidak Normal'
-        ELSE 'Normal'
-      END
-    `;
-
-    const resolvedStatusUrutExpr = `
-      CASE
-        WHEN h.inv_sts_pro = 1 OR TRIM(IFNULL(h.inv_invpro, '')) <> '' OR h_ref.inv_sts_pro = 1 THEN 1
-        WHEN h.inv_sts_pro = 2 OR tfm.taknormal IS NOT NULL OR h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN 2
-        ELSE 3
-      END
-    `;
-
-    const resolvedDebetExpr = `COALESCE(p_res.debet, p.debet)`;
-    const resolvedTanggalExpr = `COALESCE(p_res.tanggal, p.tanggal)`;
-    const resolvedTempoExpr = `COALESCE(p_res.tanggal_tempo, p.tanggal_tempo)`;
-
-    // Total kredit memperhitungkan pembayaran pada nota hasil resolusi maupun nota normal induknya
-    const resolvedKreditExpr = `
-      IFNULL((
-        SELECT SUM(kd.kredit)
-        FROM piutang_kredit_detail kd
-        INNER JOIN piutang_kredit_header kh ON kh.nomor = kd.nomor
-        WHERE kd.nota IN (k.pik_nota, ${resolvedNotaExpr})
-      ), 0)
-    `;
-
     if (search) {
-        filterSql += `
+        outerFilterSql += `
           AND (
-            k.pik_nota LIKE ?
-            OR (${resolvedNotaExpr}) LIKE ?
-            OR c.cus_nama LIKE ?
-            OR k.pik_cus_kode LIKE ?
+            src.Nota LIKE ?
+            OR src.NotaTampil LIKE ?
+            OR src.NotaAsli LIKE ?
+            OR src.CusNama LIKE ?
+            OR src.CusKode LIKE ?
             OR s.sal_nama LIKE ?
-            OR k.pik_catatan LIKE ?
+            OR src.Catatan LIKE ?
           )
         `;
         const s = `%${search}%`;
-        params.push(s, s, s, s, s, s);
+        outerParams.push(s, s, s, s, s, s, s);
     }
 
     if (status) {
         const st = String(status).trim().toLowerCase();
         if (st === "proforma") {
-            filterSql += ` AND (${resolvedStatusUrutExpr} = 1) `;
+            outerFilterSql += ` AND (src.StatusUrut = 1) `;
         } else if (st === "tidak normal" || st === "tidak_normal") {
-            filterSql += ` AND (${resolvedStatusUrutExpr} = 2) `;
+            outerFilterSql += ` AND (src.StatusUrut = 2) `;
         } else if (st === "normal") {
-            filterSql += ` AND (${resolvedStatusUrutExpr} = 3) `;
+            outerFilterSql += ` AND (src.StatusUrut = 3) `;
         }
     }
 
     const sql = `
       SELECT
-        k.pik_nomor AS Nomor,
-        k.pik_nota AS NotaAsli,
-        ${resolvedNotaExpr} AS Nota,
-        ${resolvedNotaExpr} AS NotaTampil,
-        IFNULL(h.inv_sts_pro, 0) AS InvStsPro,
-        TRIM(IFNULL(h.inv_invpro, '')) AS NotaProforma,
-        IFNULL(tfm.taknormal, '') AS NotaTakNormal,
-        ${resolvedStatusExpr} AS Status,
-        ${resolvedStatusUrutExpr} AS StatusUrut,
-        k.pik_sal_kode AS SalKode,
-        IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama,
-        k.pik_cus_kode AS CusKode,
-        c.cus_nama AS CusNama,
-        k.pik_nominal AS NominalAwal,
-        DATE_FORMAT(${resolvedTanggalExpr}, '%d-%m-%Y') AS Tanggal,
-        DATE_FORMAT(${resolvedTempoExpr}, '%d-%m-%Y') AS Tempo,
-        DATEDIFF(CURDATE(), ${resolvedTempoExpr}) AS TerlambatHari,
-        DATE_FORMAT(k.pik_tgl_target, '%Y-%m-%d') AS TglTarget,
-        k.pik_catatan AS Catatan,
-        k.user_create AS UserCreate,
-        DATE_FORMAT(k.date_create, '%Y-%m-%d %H:%i:%s') AS DateCreate,
-        (${resolvedDebetExpr} - ${resolvedKreditExpr}) AS Sisa,
-        ${resolvedKreditExpr} AS Terbayar
-      FROM tproyeksi_inkaso k
-      INNER JOIN piutang_debet p ON p.nota = k.pik_nota AND p.is_writeoff = 0
-      LEFT JOIN tinv_hdr h ON h.inv_nomor = k.pik_nota
-      LEFT JOIN (
-        SELECT invf_normal, MIN(invf_taknormal) AS taknormal
-        FROM tinv_flag
-        GROUP BY invf_normal
-      ) tfm ON tfm.invf_normal = k.pik_nota
-      LEFT JOIN tinv_hdr h_ref
-        ON h_ref.inv_nomor = REGEXP_SUBSTR(h.inv_keterangan, 'IN[GT]/[A-Za-z0-9]+/[0-9]+/[0-9]{4}')
-      LEFT JOIN piutang_debet p_res
-        ON p_res.nota = (${resolvedNotaExpr})
-        AND p_res.is_writeoff = 0
-      LEFT JOIN tcustomer c ON c.cus_kode = k.pik_cus_kode
-      LEFT JOIN tsales s ON s.sal_kode = k.pik_sal_kode
-      WHERE k.pik_status <> 'BATAL'
-        AND (
-          p.flag = 0
-          OR h.inv_sts_pro IN (1, 2)
-          OR TRIM(IFNULL(h.inv_invpro, '')) <> ''
-          OR tfm.taknormal IS NOT NULL
-          OR h_ref.inv_sts_pro IN (1, 2)
-          OR h_ref.inv_nomor LIKE 'INT/%'
-        )
-        ${filterSql}
+        src.*,
+        IFNULL(s.sal_nama, '(Tanpa Sales)') AS SalNama
+      FROM (
+        SELECT
+          p.nota AS Nomor,
+          p.nota AS NotaAsli,
+          CASE
+            WHEN h.inv_sts_pro = 1 THEN p.nota
+            WHEN TRIM(IFNULL(h.inv_invpro, '')) <> '' THEN TRIM(h.inv_invpro)
+            WHEN h_ref.inv_sts_pro = 1 THEN h_ref.inv_nomor
+            WHEN h.inv_sts_pro = 2 THEN p.nota
+            WHEN tfm.taknormal IS NOT NULL THEN tfm.taknormal
+            WHEN h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN h_ref.inv_nomor
+            ELSE p.nota
+          END AS Nota,
+          CASE
+            WHEN h.inv_sts_pro = 1 THEN p.nota
+            WHEN TRIM(IFNULL(h.inv_invpro, '')) <> '' THEN TRIM(h.inv_invpro)
+            WHEN h_ref.inv_sts_pro = 1 THEN h_ref.inv_nomor
+            WHEN h.inv_sts_pro = 2 THEN p.nota
+            WHEN tfm.taknormal IS NOT NULL THEN tfm.taknormal
+            WHEN h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN h_ref.inv_nomor
+            ELSE p.nota
+          END AS NotaTampil,
+          IFNULL(h.inv_sts_pro, 0) AS InvStsPro,
+          TRIM(IFNULL(h.inv_invpro, '')) AS NotaProforma,
+          IFNULL(tfm.taknormal, '') AS NotaTakNormal,
+          CASE
+            WHEN h.inv_sts_pro = 1 OR TRIM(IFNULL(h.inv_invpro, '')) <> '' OR h_ref.inv_sts_pro = 1 THEN 'Proforma'
+            WHEN h.inv_sts_pro = 2 OR tfm.taknormal IS NOT NULL OR h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN 'Tidak Normal'
+            ELSE 'Normal'
+          END AS Status,
+          CASE
+            WHEN h.inv_sts_pro = 1 OR TRIM(IFNULL(h.inv_invpro, '')) <> '' OR h_ref.inv_sts_pro = 1 THEN 1
+            WHEN h.inv_sts_pro = 2 OR tfm.taknormal IS NOT NULL OR h_ref.inv_sts_pro = 2 OR h_ref.inv_nomor LIKE 'INT/%' THEN 2
+            ELSE 3
+          END AS StatusUrut,
+          p.customer AS CusKode,
+          c.cus_nama AS CusNama,
+          IFNULL((
+            SELECT MAX(COALESCE(s_dtl.spk_sal_kode, so.so_sal_kode))
+            FROM tinv_dtl d
+            LEFT JOIN tspk s_dtl ON s_dtl.spk_nomor = d.invd_spk_nomor
+            LEFT JOIN tsalesorder so ON so.so_nomor = d.invd_spk_nomor
+            WHERE d.invd_inv_nomor = p.nota
+          ), c.cus_sales) AS SalKode,
+          IFNULL((
+            SELECT pd2.debet
+            FROM piutang_debet pd2
+            WHERE pd2.nota = tfm.taknormal AND pd2.is_writeoff = 0
+            LIMIT 1
+          ), p.debet) AS NominalAwal,
+          DATE_FORMAT(p.tanggal, '%d-%m-%Y') AS Tanggal,
+          DATE_FORMAT(p.tanggal_tempo, '%d-%m-%Y') AS Tempo,
+          DATEDIFF(CURDATE(), p.tanggal_tempo) AS TerlambatHari,
+          '' AS TglTarget,
+          IFNULL(h.inv_keterangan, '') AS Catatan,
+          '' AS UserCreate,
+          '' AS DateCreate,
+          (IFNULL((
+              SELECT pd2.debet
+              FROM piutang_debet pd2
+              WHERE pd2.nota = tfm.taknormal AND pd2.is_writeoff = 0
+              LIMIT 1
+            ), p.debet) - IFNULL(kr.kredit, 0)) AS Sisa,
+          IFNULL(kr.kredit, 0) AS Terbayar
+        FROM piutang_debet p
+        INNER JOIN tcustomer c ON c.cus_kode = p.customer
+        LEFT JOIN tinv_hdr h ON h.inv_nomor = p.nota
+        LEFT JOIN (
+          SELECT invf_normal, MIN(invf_taknormal) AS taknormal
+          FROM tinv_flag GROUP BY invf_normal
+        ) tfm ON tfm.invf_normal = p.nota
+        LEFT JOIN tinv_hdr h_ref
+          ON h_ref.inv_nomor = REGEXP_SUBSTR(h.inv_keterangan, 'IN[GT]/[A-Za-z0-9]+/[0-9]+/[0-9]{4}')
+        LEFT JOIN (
+          SELECT kd.nota, SUM(kd.kredit) AS kredit
+          FROM piutang_kredit_detail kd
+          INNER JOIN piutang_kredit_header kh ON kh.nomor = kd.nomor
+          WHERE kh.tanggal <= ?
+          GROUP BY kd.nota
+        ) kr ON kr.nota = IFNULL(tfm.taknormal, p.nota)
+        WHERE p.flag = 0
+          AND p.is_writeoff = 0
+          AND p.tanggal <= ?
+          AND p.tanggal_tempo <= CURDATE()
+          AND p.tanggal_tempo <= ?
+          AND p.nota NOT IN (SELECT x.inv_nomor FROM tinv_hdr x WHERE x.INV_Keterangan LIKE '%INV YG DIKIRIM%')
+          AND (IFNULL((
+              SELECT pd2.debet
+              FROM piutang_debet pd2
+              WHERE pd2.nota = tfm.taknormal AND pd2.is_writeoff = 0
+              LIMIT 1
+            ), p.debet) - IFNULL(kr.kredit, 0)) > ${INKASO_TOL}
+      ) src
+      LEFT JOIN tsales s ON s.sal_kode = src.SalKode
+      WHERE 1=1
+        ${outerFilterSql}
     `;
 
-    const batalSql = `
-      SELECT IFNULL(SUM(k.pik_nominal), 0) AS TotalBatal
-      FROM tproyeksi_inkaso k
-      LEFT JOIN tsales s ON s.sal_kode = k.pik_sal_kode
-      WHERE k.pik_status = 'BATAL'
-        ${batalSalesFilterSql}
-    `;
-
-    const [[rows], [[batalRow]]] = await Promise.all([
-        db.query(sql, params),
-        db.query(batalSql, batalParams),
-    ]);
-
-    return buildResult(rows, pageNum, limitNum, batalRow?.TotalBatal || 0);
+    const [rows] = await db.query(sql, [...baseParams, ...outerParams]);
+    return buildResult(rows, pageNum, limitNum, 0);
 };
 
 module.exports = {

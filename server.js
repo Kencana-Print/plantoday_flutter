@@ -5,6 +5,7 @@ const path = require("path");
 
 const requestLogger = require(path.join(__dirname, "middleware", "log"));
 const clientPlatformGuard = require("./middleware/clientPlatformGuard");
+const { UPLOAD_DIR } = require("./middleware/uploadPermintaanHarga");
 
 const app = express();
 
@@ -19,15 +20,15 @@ app.use(
         },
     }),
 );
-app.use(
-    "/image/mintaharga",
-    express.static(path.join(__dirname, "image", "mintaharga"), {
-        setHeaders: (res) => {
-            res.set("Access-Control-Allow-Origin", "*");
-            res.set("Cross-Origin-Resource-Policy", "cross-origin");
-        },
-    }),
-);
+
+const serveMintaHargaImages = express.static(UPLOAD_DIR, {
+    setHeaders: (res) => {
+        res.set("Access-Control-Allow-Origin", "*");
+        res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+});
+app.use("/image/mintaharga", serveMintaHargaImages);
+app.use("/images/mintaharga", serveMintaHargaImages);
 
 app.use(express.json({ limit: "3mb" }));
 app.use(express.urlencoded({ extended: true, limit: "3mb" }));

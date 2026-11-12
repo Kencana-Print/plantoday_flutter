@@ -59,7 +59,7 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
 
         const [[{ max_kode }]] = await conn.query(
             `SELECT IFNULL(MAX(CAST(cus_kode AS UNSIGNED)), 0) AS max_kode
-             FROM kencanaprint.tcustomer
+             FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer
              WHERE TRIM(IFNULL(cus_kode, '')) REGEXP '^[0-9]{1,5}$'`,
         );
 
@@ -70,7 +70,7 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
             ccKode = String(nextKodeNum).padStart(5, "0");
 
             const [cek] = await conn.query(
-                "SELECT 1 FROM kencanaprint.tcustomer WHERE cus_kode = ?",
+                `SELECT 1 FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer WHERE cus_kode = ?`,
                 [ccKode],
             );
 
@@ -79,7 +79,7 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
         }
 
         await conn.query(
-            `INSERT INTO kencanaprint.tcustomer
+            `INSERT INTO ${process.env.DB_NAME_PENAWARAN}.tcustomer
              (cus_kode, cus_nama, cus_alamat, cus_kota, cus_telp, cus_cp, cus_aktif, user_create, date_create)
              VALUES (?, ?, ?, ?, ?, ?, 1, ?, NOW())`,
             [
@@ -163,7 +163,7 @@ const updateCalonCustomerByKode = async ({ cc_kode, body }) => {
     }
 
     const [exist] = await db.query(
-        `SELECT cus_kode FROM kencanaprint.tcustomer WHERE cus_kode = ? LIMIT 1`,
+        `SELECT cus_kode FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer WHERE cus_kode = ? LIMIT 1`,
         [cc_kode],
     );
 
@@ -175,7 +175,7 @@ const updateCalonCustomerByKode = async ({ cc_kode, body }) => {
     }
 
     const sql = `
-    UPDATE kencanaprint.tcustomer
+    UPDATE ${process.env.DB_NAME_PENAWARAN}.tcustomer
     SET
         cus_nama = ?,
         cus_kota = ?,
@@ -213,7 +213,7 @@ const updateCalonCustomerByKode = async ({ cc_kode, body }) => {
 
     const [rows] = await db.query(
         `SELECT cus_kode AS cc_kode, cus_nama AS cc_nama, cus_alamat AS cc_alamat, cus_kota AS cc_kota, cus_cp AS cc_cp, cus_telp AS cc_telp
-         FROM kencanaprint.tcustomer
+         FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer
          WHERE cus_kode = ? LIMIT 1`,
         [cc_kode],
     );
@@ -265,7 +265,7 @@ const cariCustomer = async (search) => {
             cus_kota                                   AS cc_kota,
             cus_email                                  AS cc_email,
             'CUSTOMER'                                 AS sumber
-        FROM kencanaprint.tcustomer
+        FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer
         WHERE (cus_nama LIKE ? OR cus_kode LIKE ?)
         ORDER BY cus_nama ASC
         LIMIT 50
@@ -450,7 +450,7 @@ const visitPlanById = async ({ user, tanggal, cus_kode }) => {
             c.cus_alamat AS cc_alamat,
             c.cus_kota AS cc_kota
         FROM tkunjungan k
-        LEFT JOIN kencanaprint.tcustomer c ON c.cus_kode = k.cus_kode
+        LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer c ON c.cus_kode = k.cus_kode
         WHERE k.user = ?
             AND DATE(k.tanggal_plan) = ?
             AND k.cus_kode = ?
@@ -570,7 +570,14 @@ const updateVisitPlan = async ({
             longitude = COALESCE(?, longitude)
         WHERE id = ?
         `,
-        [String(tanggal_plan), note ?? "", catatan ?? "", latitude, longitude, id],
+        [
+            String(tanggal_plan),
+            note ?? "",
+            catatan ?? "",
+            latitude,
+            longitude,
+            id,
+        ],
     );
 
     if (result.affectedRows === 0) {
@@ -725,7 +732,7 @@ const getVisitFromPlan = async ({ user, cus_kode, tanggal }) => {
             c.cus_alamat AS cc_alamat,
             c.cus_kota AS cc_kota
         FROM tkunjungan k
-        LEFT JOIN kencanaprint.tcustomer c ON c.cus_kode = k.cus_kode
+        LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer c ON c.cus_kode = k.cus_kode
         WHERE k.user = ?
             AND k.cus_kode = ?
             AND DATE(k.tanggal_plan) = ?
@@ -877,7 +884,7 @@ const getRekapVisit = async ({ user, start, end, cabang, publicBaseUrl }) => {
             ELSE CONCAT(?, CAST(a.foto AS CHAR(255)))
         END AS foto_url
         FROM tkunjungan a
-        LEFT JOIN kencanaprint.tcustomer b ON b.cus_kode = a.cus_kode
+        LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer b ON b.cus_kode = a.cus_kode
         LEFT JOIN tkaryawan k ON k.kar_nama = a.user AND k.kar_isaktif = 1
         WHERE ${userFilter.sql}
         AND a.realisasi = 'Y'
@@ -914,7 +921,7 @@ const rekapVisitWA = async ({ user, start, end, cabang }) => {
         ka.kar_cabang AS user_cabang
     FROM tkunjungan ku
     INNER JOIN tkaryawan ka ON ka.kar_nama = ku.user
-    INNER JOIN kencanaprint.tcustomer ca ON ca.cus_kode = ku.cus_kode
+    INNER JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer ca ON ca.cus_kode = ku.cus_kode
     WHERE ${userFilter.sql}
         AND ku.realisasi = 'Y'
         AND DATE(ku.tanggal) >= ?
@@ -1011,7 +1018,7 @@ const getRekapVisitPlan = async ({
             c.cus_kota AS cc_kota
         FROM pick p
         JOIN tkunjungan k ON k.id = p.pick_id
-        LEFT JOIN kencanaprint.tcustomer c ON c.cus_kode = k.cus_kode
+        LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer c ON c.cus_kode = k.cus_kode
         INNER JOIN tkaryawan ka ON ka.kar_nama = k.user AND ka.kar_isaktif = 1
         WHERE ka.kar_jabatan = 'SALES'
         `;
@@ -1052,7 +1059,7 @@ const getRekapVisitPlan = async ({
             c.cus_kota AS cc_kota
         FROM pick p
         JOIN tkunjungan k ON k.id = p.pick_id
-        LEFT JOIN kencanaprint.tcustomer c ON c.cus_kode = k.cus_kode
+        LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer c ON c.cus_kode = k.cus_kode
         INNER JOIN tkaryawan ka ON ka.kar_nama = k.user AND ka.kar_isaktif = 1
         WHERE ${outerFilter.sql}
         `;
@@ -1107,17 +1114,12 @@ const rekapVisitPlanWA = async ({ user, start, end, cabang }) => {
         AND DATE(t.tanggal_plan) <= ?
     GROUP BY t.user, DATE(t.tanggal_plan), t.cus_kode
     ) p ON p.pick_id = k.id
-    LEFT JOIN kencanaprint.tcustomer c ON c.cus_kode = k.cus_kode
+    LEFT JOIN ${process.env.DB_NAME_PENAWARAN}.tcustomer c ON c.cus_kode = k.cus_kode
     LEFT JOIN tkaryawan ka ON ka.kar_nama = k.user AND ka.kar_isaktif = 1
     WHERE ${outerFilter.sql}
     `;
 
-    const params = [
-        ...innerFilter.params,
-        start,
-        end,
-        ...outerFilter.params,
-    ];
+    const params = [...innerFilter.params, start, end, ...outerFilter.params];
 
     if (cabang) {
         sql += ` AND UPPER(ka.kar_cabang) = ?`;
@@ -1192,7 +1194,7 @@ const getRekapCalonCustomer = async ({ cabang, cc_nama, limit }) => {
           cus_nama_npwp AS cc_nama_npwp,
           cus_alamat_npwp AS cc_alamat_npwp,
           cus_kota_npwp AS cc_kota_npwp
-      FROM kencanaprint.tcustomer
+      FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer
     WHERE 1=1
     `;
     const params = [];
@@ -1234,7 +1236,7 @@ const rekapCalonCustomerWA = async ({ cabang, keyword }) => {
         cus_telp   AS cc_telp,
         cus_kota   AS cc_kota,
         'CUSTOMER' AS sumber
-    FROM kencanaprint.tcustomer
+    FROM ${process.env.DB_NAME_PENAWARAN}.tcustomer
     WHERE cus_nama LIKE ?
     ${cab ? "AND cus_kota = ?" : ""}
     ORDER BY cus_nama ASC
@@ -1357,7 +1359,7 @@ const getUserByCabang = async (cabang) => {
 
     // Wajib punya pasangan di tsales (aktif, SALES); duplikat alias digabung jadi kanonik.
     const [salesRows] = await db.query(
-        `SELECT sal_nama FROM kencanaprint.tsales
+        `SELECT sal_nama FROM ${process.env.DB_NAME_PENAWARAN}.tsales
             WHERE COALESCE(sal_aktif, 'Y') != 'N' AND sal_jabatan = 'SALES'`,
     );
     const validCanon = new Set(
