@@ -2936,14 +2936,15 @@ const deletePermintaanHarga = async ({ nomor, user }) => {
 const createPermintaanHargaCustomer = async ({ body, user }) => {
     let conn;
     try {
-        const actor =
+        const rawActor =
             String(body.user_create || "").trim() ||
             String(user?.nama || "").trim() ||
             resolveActor(user, body);
+        const actor = String(rawActor || "PlanToday").trim().slice(0, 10);
 
-        const nama = String(body.nama || "").trim();
-        const alamat = String(body.alamat || "").trim();
-        const kota = String(body.kota || "").trim();
+        const nama = String(body.nama || body.cus_nama || "").trim();
+        const alamat = String(body.alamat || body.cus_alamat || "").trim();
+        const kota = String(body.kota || body.cus_kota || "").trim();
         const telp = String(body.cus_telp || body.telp || "").trim();
         const cp = String(body.cus_cp || body.kontak_person || "").trim();
         const email = String(body.cus_email || body.email || "").trim();
@@ -3056,22 +3057,22 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
                             cus_aktif,
                             user_create,
                             date_create
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW())
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
                         `,
                         [
-                            candidate,
-                            nama,
-                            alamat,
-                            kota,
-                            telp,
-                            cp,
-                            email,
+                            candidate.slice(0, 10),
+                            nama.slice(0, 100),
+                            alamat.slice(0, 200),
+                            kota.slice(0, 20),
+                            telp.slice(0, 20),
+                            cp.slice(0, 50),
+                            email.slice(0, 40),
                             korporasi,
-                            korporasi === "Y" ? jenisUsaha : "",
-                            korporasi === "Y" ? npwp : "",
-                            korporasi === "Y" ? namaNpwp : "",
-                            korporasi === "Y" ? alamatNpwp : "",
-                            korporasi === "Y" ? kotaNpwp : "",
+                            (korporasi === "Y" ? jenisUsaha : "").slice(0, 30),
+                            (korporasi === "Y" ? npwp : "").slice(0, 25),
+                            (korporasi === "Y" ? namaNpwp : "").slice(0, 100),
+                            (korporasi === "Y" ? alamatNpwp : "").slice(0, 200),
+                            (korporasi === "Y" ? kotaNpwp : "").slice(0, 20),
                             actor,
                         ],
                     );
@@ -3107,6 +3108,7 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
             } catch {}
             conn.release();
         }
+        console.error("[PermintaanHarga][Customer][CreateError]", err);
         return {
             status: 500,
             body: {

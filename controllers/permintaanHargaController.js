@@ -249,6 +249,7 @@ const createPermintaanHargaCustomer = async (req, res) => {
             });
         return res.status(result.status).json(result.body);
     } catch (err) {
+        console.error("[PermintaanHargaController][CreateCustomerError]", err);
         return res.status(500).json({
             success: false,
             message:
