@@ -3057,7 +3057,7 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
                             cus_aktif,
                             user_create,
                             date_create
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW())
                         `,
                         [
                             candidate.slice(0, 10),
