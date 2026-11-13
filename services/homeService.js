@@ -96,7 +96,7 @@ const calonCustomer = async ({ nama, alamat, cabang, telp, pic }) => {
         let notice = null;
         try {
             const similar = await findSimilarCustomers(conn, nama, {
-                tableName: "kencanaprint.tcustomer",
+                tableName: `${process.env.DB_NAME_PENAWARAN}.tcustomer`,
             });
             if (similar.length) {
                 const top = similar[0];
@@ -290,7 +290,7 @@ const cekCustomerNama = async ({ nama, exclude_kode }) => {
 
     const matches = await findSimilarCustomers(db, nama, {
         excludeKode: exclude_kode,
-        tableName: "kencanaprint.tcustomer",
+        tableName: `${process.env.DB_NAME_PENAWARAN}.tcustomer`,
     });
 
     let notice = null;
