@@ -58,6 +58,6 @@ app.use("/api", require("./routes/potensiRoute"));
 app.use("/api", require("./routes/inkasoRoute"));
 app.use("/lookups", require("./routes/permintaanHargaRoute"));
 
-app.listen(process.env.PORT, "0.0.0.0", () => {
+app.listen(process.env.PORT, "127.0.0.1", () => {
     console.log(`Server PlanToday running in: ${process.env.PORT}`);
 });
