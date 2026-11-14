@@ -1,0 +1,203 @@
+name: Android Release to VPS
+
+on:
+    # push:
+    #     branches:
+    #         - main
+    workflow_dispatch:
+        inputs:
+            mandatory:
+                description: "Set true for mandatory update"
+                required: false
+                default: false
+                type: boolean
+
+permissions:
+    contents: read
+
+concurrency:
+    group: android-release-vps-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build-and-upload:
+        name: Build APK & Deploy to VPS
+        runs-on: ubuntu-latest
+        env:
+            APK_BASENAME: PlanToday
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Create .env from secret
+              env:
+                  ENV_CONTENT: ${{ secrets.ENV_FILE }}
+              run: |
+                  if [ -n "$ENV_CONTENT" ]; then
+                    echo "$ENV_CONTENT" > .env
+                  else
+                    cp .env.example .env
+                  fi
+
+            - name: Setup Java 17
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: "17"
+                  cache: gradle
+
+            - name: Setup Flutter environment
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: stable
+                  cache: true
+
+            - name: Install dependencies
+              run: flutter pub get
+
+            - name: Prepare Android keystore
+              shell: bash
+              run: |
+                  if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+                    echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/upload-keystore.jks
+                    test -s android/app/upload-keystore.jks
+                  fi
+
+            - name: Make gradlew executable
+              run: |
+                  if [ -f android/gradlew ]; then
+                    chmod +x android/gradlew
+                  fi
+
+            - name: Validate versionCode bump
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  FULL_VERSION=$(sed -n 's/^version: *\([^ #]*\).*/\1/p' pubspec.yaml | head -n 1)
+                  LOCAL_VERSION_CODE=$(echo "$FULL_VERSION" | cut -d'+' -f2)
+                  if [ -z "${LOCAL_VERSION_CODE}" ]; then
+                    echo "::error::Unable to read local versionCode from pubspec.yaml"
+                    exit 1
+                  fi
+
+                  BASE_URL="${{ secrets.VPS_BASE_DOWNLOAD_URL}}"
+                  REMOTE_LATEST_URL="${BASE_URL}/latest.json"
+                  REMOTE_VERSION_CODE=0
+
+                  if curl -fsSL "${REMOTE_LATEST_URL}" -o /tmp/latest.json; then
+                    REMOTE_VERSION_CODE=$(node -e "const fs=require('fs');try{const j=JSON.parse(fs.readFileSync('/tmp/latest.json','utf8'));process.stdout.write(String(Number(j.versionCode||0)));}catch(e){process.stdout.write('0');}")
+                  fi
+
+                  echo "Local versionCode=${LOCAL_VERSION_CODE}"
+                  echo "Remote versionCode=${REMOTE_VERSION_CODE}"
+
+                  if [ "${REMOTE_VERSION_CODE}" -gt 0 ] && [ "${LOCAL_VERSION_CODE}" -le "${REMOTE_VERSION_CODE}" ]; then
+                    echo "::error::versionCode in pubspec.yaml must be greater than current latest.json on server (local=${LOCAL_VERSION_CODE}, remote=${REMOTE_VERSION_CODE})."
+                    exit 1
+                  fi
+
+            - name: Build release APK (arm64-v8a)
+              env:
+                  MYAPP_UPLOAD_STORE_FILE: upload-keystore.jks
+                  MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+                  MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+                  MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+              run: |
+                  flutter build apk --target-platform android-arm64 --release --dart-define-from-file=.env
+
+            - name: Prepare artifact and latest.json
+              id: meta
+              shell: bash
+              run: |
+                  FULL_VERSION=$(sed -n 's/^version: *\([^ #]*\).*/\1/p' pubspec.yaml | head -n 1)
+                  VERSION_NAME=$(echo "$FULL_VERSION" | cut -d'+' -f1)
+                  VERSION_CODE=$(echo "$FULL_VERSION" | cut -d'+' -f2)
+                  SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+                  APK_FILE="${APK_BASENAME}-v${VERSION_NAME}+${VERSION_CODE}-${SHORT_SHA}.apk"
+                  LATEST_APK_FILE="${APK_BASENAME}-latest.apk"
+
+                  APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+                  if [ ! -f "$APK_PATH" ]; then
+                    APK_PATH="build/app/outputs/apk/release/app-release.apk"
+                  fi
+
+                  mkdir -p deploy/out
+                  cp "$APK_PATH" "deploy/out/${APK_FILE}"
+                  cp "$APK_PATH" "deploy/out/${LATEST_APK_FILE}"
+
+                  SHA256=$(sha256sum "deploy/out/${APK_FILE}" | awk '{print $1}')
+                  MANDATORY_RAW="${{ github.event.inputs.mandatory }}"
+                  if [ "$(echo "$MANDATORY_RAW" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+                    MANDATORY_VALUE="true"
+                  else
+                    MANDATORY_VALUE="false"
+                  fi
+
+                  BASE_URL="${{ secrets.VPS_BASE_DOWNLOAD_URL}}"
+
+                  cat > deploy/out/latest.json <<EOF
+                  {
+                    "versionCode": ${VERSION_CODE},
+                    "versionName": "${VERSION_NAME}",
+                    "mandatory": ${MANDATORY_VALUE},
+                    "apkUrl": "${BASE_URL}/${LATEST_APK_FILE}",
+                    "sha256": "${SHA256}",
+                    "releaseDate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "notes": "PlanToday Flutter Build ${GITHUB_RUN_NUMBER} (${SHORT_SHA})"
+                  }
+                  EOF
+
+                  echo "apk_file=${APK_FILE}" >> "$GITHUB_OUTPUT"
+
+            - name: Upload release files to VPS
+              uses: appleboy/scp-action@v0.1.7
+              with:
+                  host: ${{ secrets.VPS_HOST }}
+                  username: ${{ secrets.VPS_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  port: ${{ secrets.VPS_PORT || 22 }}
+                  source: "deploy/out/*"
+                  target: "${{ secrets.VPS_APK_TARGET_PATH }}/incoming"
+                  strip_components: 2
+
+            - name: Normalize release files on VPS
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.VPS_HOST }}
+                  username: ${{ secrets.VPS_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  port: ${{ secrets.VPS_PORT || 22 }}
+                  script: |
+                      set -e
+                      TARGET_DIR="${{ secrets.VPS_APK_TARGET_PATH }}"
+                      mkdir -p "$TARGET_DIR"
+                      cd "$TARGET_DIR"
+
+                      if [ -d "incoming" ]; then
+                        find incoming -type f \( -name "PlanToday-v*.apk" -o -name "PlanToday-latest.apk" -o -name "latest.json" \) -exec mv -f {} . \;
+                        rm -rf incoming
+                      fi
+
+                      chmod 644 PlanToday*.apk latest.json || true
+
+            - name: Keep only latest 2 versioned APKs on VPS
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.VPS_HOST }}
+                  username: ${{ secrets.VPS_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  port: ${{ secrets.VPS_PORT || 22 }}
+                  script: |
+                      set -e
+                      TARGET_DIR="${{ secrets.VPS_APK_TARGET_PATH }}"
+                      cd "$TARGET_DIR"
+
+                      ls -1t PlanToday-v*.apk 2>/dev/null | tail -n +3 | xargs -r rm -f
+
+            - name: Publish summary
+              shell: bash
+              run: |
+                  echo "APK uploaded: ${{ steps.meta.outputs.apk_file }}" >> "$GITHUB_STEP_SUMMARY"
+                  echo "Latest link: PlanToday-latest.apk" >> "$GITHUB_STEP_SUMMARY"
+                  echo "Manifest updated: latest.json" >> "$GITHUB_STEP_SUMMARY"

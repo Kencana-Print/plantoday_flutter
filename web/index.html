@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="PlanToday Mobile - Sales & Marketing CRM System">
+
+  <!-- Prevent HTML caching at browser/webview level -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="PlanToday">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>PlanToday</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, 
+    input:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+      -webkit-text-fill-color: inherit !important;
+      transition: background-color 5000s ease-in-out 0s;
+    }
+    input, textarea, select {
+      font-size: 16px !important;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Bersihkan Service Worker otomatis jika halaman baru saja di-hard-reload (ada ?_v=...)
+    (async function cleanStaleWorkersOnBoot() {
+      try {
+        if (window.location.search.indexOf('_v=') !== -1) {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) await r.unregister();
+          }
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            for (const k of keys) await caches.delete(k);
+          }
+        }
+      } catch (_) {}
+    })();
+
+    // Force hard reload: bekerja di Desktop Browser & iOS Home Screen Shortcut (Standalone PWA)
+    window.forceHardReload = async function() {
+      const cleanupPromise = (async function() {
+        try {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+              await reg.unregister();
+            }
+          }
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            for (const key of keys) {
+              await caches.delete(key);
+            }
+          }
+          const ts = Date.now();
+          await Promise.allSettled([
+            fetch('index.html?t=' + ts, { cache: 'reload' }),
+            fetch('version.json?t=' + ts, { cache: 'reload' }),
+            fetch('flutter_bootstrap.js?t=' + ts, { cache: 'reload' }),
+            fetch('main.dart.js?t=' + ts, { cache: 'reload' }),
+          ]);
+        } catch (e) {
+          console.warn('Gagal menghapus cache:', e);
+        }
+      })();
+
+      // Batasi tunggu maksimal 1200ms agar di iOS Standalone PWA tidak pernah macet/hang
+      await Promise.race([
+        cleanupPromise,
+        new Promise(resolve => setTimeout(resolve, 1200)),
+      ]);
+
+      const ts = Date.now().toString();
+      const basePath = window.location.origin + window.location.pathname;
+      const hash = window.location.hash || '';
+      const targetUrl = basePath + '?_v=' + ts + hash;
+
+      window.location.replace(targetUrl);
+      setTimeout(function() {
+        window.location.href = targetUrl;
+      }, 250);
+    };
+
+    // Muat flutter_bootstrap.js dengan cache-buster dinamis agar iOS WebKit tidak menahan script lama
+    (function loadFlutterBootstrap() {
+      var script = document.createElement('script');
+      script.src = 'flutter_bootstrap.js?v=' + Date.now();
+      script.async = true;
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>
