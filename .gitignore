@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+.env
+node_modules
+uploads/kiriman
+uploads/mintaharga
+uploads/visits
+/docs
+/image
+graphify-out
+=======
 # Miscellaneous
 *.class
 *.log
@@ -54,3 +64,4 @@ app.*.map.json
 **/key.properties
 deploy/
 
+>>>>>>> 55aaa959cc7a23726cfb6635baca6d272bc884ba
