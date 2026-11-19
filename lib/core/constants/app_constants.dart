@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
@@ -40,7 +41,7 @@ class ApiConfig {
         const String.fromEnvironment('IMAGE_BASE_URL');
     if (configured.isNotEmpty &&
         !configured.contains(':8182') &&
-        !configured.contains('103.94.238.252')) {
+        !configured.contains(':8080')) {
       return configured.replaceAll(RegExp(r'/+$'), '');
     }
 
@@ -48,15 +49,27 @@ class ApiConfig {
         const String.fromEnvironment('IMAGE_READ_URL');
     if (readUrl.isNotEmpty &&
         !readUrl.contains(':8182') &&
-        !readUrl.contains('103.94.238.252')) {
+        !readUrl.contains(':8080')) {
       return readUrl.replaceAll(RegExp(r'/+$'), '');
     }
 
     // Fallback dinamis: potong suffix '/api' dari baseUrl
     final b = baseUrl.trim();
     if (b.isNotEmpty) {
-      return b.replaceAll(RegExp(r'/api/?$'), '').replaceAll(RegExp(r'/+$'), '');
+      final stripped =
+          b.replaceAll(RegExp(r'/api/?$'), '').replaceAll(RegExp(r'/+$'), '');
+      if (stripped.isNotEmpty) return stripped;
     }
+
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && origin != 'null') {
+          return origin.replaceAll(RegExp(r'/+$'), '');
+        }
+      } catch (_) {}
+    }
+
     return '';
   }
 

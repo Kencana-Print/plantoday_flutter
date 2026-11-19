@@ -721,8 +721,7 @@ class _PermintaanHargaFormScreenState
       if (c != null && c.toString().trim().isNotEmpty) {
         String res = c.toString().trim();
         res = res
-            .replaceFirst(RegExp(r'^https?://[^/]+:8182'), '')
-            .replaceFirst(RegExp(r'^https?://103\.94\.238\.252(:\d+)?'), '')
+            .replaceFirst(RegExp(r'^https?://[^/]+:(?:8182|8080|3005)'), '')
             .replaceFirst(RegExp(r'^/images?/mintaharga'), '/file-gambar/mintaharga');
 
         if (!res.startsWith('http://') && !res.startsWith('https://')) {

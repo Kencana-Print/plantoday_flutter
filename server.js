@@ -9,28 +9,13 @@ const { UPLOAD_DIR } = require("./middleware/uploadPermintaanHarga");
 
 const app = express();
 
+app.set("trust proxy", true);
+
 app.use(cors());
 
 app.use(
     "/uploads",
     express.static(path.join(__dirname, "uploads"), {
-        setHeaders: (res) => {
-            res.set("Access-Control-Allow-Origin", "*");
-            res.set("Cross-Origin-Resource-Policy", "cross-origin");
-        },
-    }),
-);
-
-// Static /file-gambar (identik Manksi: mengarah ke mount /mnt/image)
-const IMAGE_MOUNT_DIR =
-    process.env.IMAGE_MOUNT_DIR ||
-    (process.platform === "win32"
-        ? path.join(process.cwd(), "image")
-        : "/mnt/image");
-
-app.use(
-    "/file-gambar",
-    express.static(IMAGE_MOUNT_DIR, {
         setHeaders: (res) => {
             res.set("Access-Control-Allow-Origin", "*");
             res.set("Cross-Origin-Resource-Policy", "cross-origin");
@@ -44,8 +29,29 @@ const serveMintaHargaImages = express.static(UPLOAD_DIR, {
         res.set("Cross-Origin-Resource-Policy", "cross-origin");
     },
 });
+
+// Routing gambar spesifik mintaharga langsung ke UPLOAD_DIR
+app.use("/file-gambar/mintaharga", serveMintaHargaImages);
+app.use("/api/file-gambar/mintaharga", serveMintaHargaImages);
 app.use("/image/mintaharga", serveMintaHargaImages);
 app.use("/images/mintaharga", serveMintaHargaImages);
+
+// Static /file-gambar (identik Manksi: mengarah ke mount /mnt/image)
+const IMAGE_MOUNT_DIR =
+    process.env.IMAGE_MOUNT_DIR ||
+    (process.platform === "win32"
+        ? path.join(process.cwd(), "image")
+        : "/mnt/image");
+
+const serveMountImages = express.static(IMAGE_MOUNT_DIR, {
+    setHeaders: (res) => {
+        res.set("Access-Control-Allow-Origin", "*");
+        res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+});
+
+app.use("/file-gambar", serveMountImages);
+app.use("/api/file-gambar", serveMountImages);
 
 app.use(express.json({ limit: "3mb" }));
 app.use(express.urlencoded({ extended: true, limit: "3mb" }));

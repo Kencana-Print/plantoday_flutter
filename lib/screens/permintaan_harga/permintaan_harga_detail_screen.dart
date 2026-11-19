@@ -584,10 +584,9 @@ class _PermintaanHargaDetailScreenState
 
     String resolved = picked;
 
-    // Bersihkan prefix host legacy (port 8182 / IP lama) dan normalisasi ke endpoint standar /file-gambar
+    // Bersihkan prefix host legacy (port 8182 / port 8080) dan normalisasi ke endpoint standar /file-gambar
     resolved = resolved
-        .replaceFirst(RegExp(r'^https?://[^/]+:8182'), '')
-        .replaceFirst(RegExp(r'^https?://103\.94\.238\.252(:\d+)?'), '')
+        .replaceFirst(RegExp(r'^https?://[^/]+:(?:8182|8080|3005)'), '')
         .replaceFirst(RegExp(r'^/images?/mintaharga'), '/file-gambar/mintaharga');
 
     if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
