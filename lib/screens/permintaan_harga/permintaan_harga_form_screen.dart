@@ -720,19 +720,20 @@ class _PermintaanHargaFormScreenState
     for (final c in candidates) {
       if (c != null && c.toString().trim().isNotEmpty) {
         String res = c.toString().trim();
-        if (!res.startsWith('http://') && !res.startsWith('https://')) {
-          res = '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}/$res';
-        }
         res = res
-            .replaceFirst(
-              'http://103.94.238.252:3005/image/mintaharga',
-              '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
-            )
-            .replaceFirst(
-              'http://103.94.238.252:8182/image/mintaharga',
-              '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
-            );
-        _existingImageUrl = '$res?t=${DateTime.now().millisecondsSinceEpoch}';
+            .replaceFirst(RegExp(r'^https?://103\.94\.238\.252(:\d+)?'), '')
+            .replaceFirst(RegExp(r'^/image/mintaharga'), '/file-gambar/mintaharga')
+            .replaceFirst(RegExp(r'^/images/mintaharga'), '/file-gambar/mintaharga');
+
+        if (!res.startsWith('http://') && !res.startsWith('https://')) {
+          final base = ApiConfig.imageBaseUrl;
+          final clean = res.startsWith('/') ? res : '/$res';
+          res = clean.startsWith('/file-gambar/') || clean.startsWith('/uploads/')
+              ? '$base$clean'
+              : '$base/file-gambar/mintaharga$clean';
+        }
+        final sep = res.contains('?') ? '&' : '?';
+        _existingImageUrl = '$res${sep}t=${DateTime.now().millisecondsSinceEpoch}';
         break;
       }
     }

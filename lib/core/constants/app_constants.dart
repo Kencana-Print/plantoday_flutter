@@ -35,9 +35,24 @@ class ApiConfig {
   static const String achievement = '/achievement';
 
   // Media / Gambar
-  static String get imageReadUrl =>
-      dotenv.env['IMAGE_READ_URL'] ??
-      const String.fromEnvironment('IMAGE_READ_URL');
+  static String get imageBaseUrl {
+    final configured = dotenv.env['IMAGE_BASE_URL'] ??
+        const String.fromEnvironment('IMAGE_BASE_URL');
+    if (configured.isNotEmpty) return configured.replaceAll(RegExp(r'/+$'), '');
+
+    final readUrl = dotenv.env['IMAGE_READ_URL'] ??
+        const String.fromEnvironment('IMAGE_READ_URL');
+    if (readUrl.isNotEmpty) return readUrl.replaceAll(RegExp(r'/+$'), '');
+
+    // Fallback dinamis: potong suffix '/api' dari baseUrl
+    final b = baseUrl.trim();
+    if (b.isNotEmpty) {
+      return b.replaceAll(RegExp(r'/api/?$'), '').replaceAll(RegExp(r'/+$'), '');
+    }
+    return '';
+  }
+
+  static String get imageReadUrl => imageBaseUrl;
 
   static String get imageUploadUrl =>
       dotenv.env['IMAGE_UPLOAD_URL'] ??
@@ -47,7 +62,7 @@ class ApiConfig {
       dotenv.env['IMAGE_BASE_PATH'] ??
       const String.fromEnvironment(
         'IMAGE_BASE_PATH',
-        defaultValue: '/images/mintaharga',
+        defaultValue: '/file-gambar/mintaharga',
       );
 
   // Update Check URL
@@ -55,8 +70,9 @@ class ApiConfig {
     final configured = dotenv.env['UPDATE_CHECK_URL'] ??
         const String.fromEnvironment('UPDATE_CHECK_URL');
     if (configured.isNotEmpty) return configured;
-    final base = imageReadUrl.isNotEmpty ? imageReadUrl : 'http://103.94.238.252:8182';
-    return '$base/releases/latest.json';
+    final base = imageBaseUrl;
+    if (base.isNotEmpty) return '$base/releases/latest.json';
+    return '';
   }
 
   // Timeout settings

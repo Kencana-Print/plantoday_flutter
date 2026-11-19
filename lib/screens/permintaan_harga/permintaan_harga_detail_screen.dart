@@ -584,26 +584,25 @@ class _PermintaanHargaDetailScreenState
 
     String resolved = picked;
 
-    if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
-      resolved =
-          '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}/$resolved';
-    }
-
-    // Normalisasi url persis React Native
+    // Bersihkan prefix IP lama dan normalisasi ke endpoint standar /file-gambar
     resolved = resolved
-        .replaceFirst(
-          'http://103.94.238.252:3005/image/mintaharga',
-          '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
-        )
-        .replaceFirst(
-          'http://103.94.238.252:8182/image/mintaharga',
-          '${ApiConfig.imageReadUrl}${ApiConfig.imageBasePath}',
-        );
+        .replaceFirst(RegExp(r'^https?://103\.94\.238\.252(:\d+)?'), '')
+        .replaceFirst(RegExp(r'^/image/mintaharga'), '/file-gambar/mintaharga')
+        .replaceFirst(RegExp(r'^/images/mintaharga'), '/file-gambar/mintaharga');
+
+    if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
+      final base = ApiConfig.imageBaseUrl;
+      final clean = resolved.startsWith('/') ? resolved : '/$resolved';
+      resolved = clean.startsWith('/file-gambar/') || clean.startsWith('/uploads/')
+          ? '$base$clean'
+          : '$base/file-gambar/mintaharga$clean';
+    }
 
     // Tambahkan cache-buster berbasis update timestamp agar langsung segar setelah upload/edit
     final cacheBuster = _fetchTimestamp.toString();
+    final separator = resolved.contains('?') ? '&' : '?';
 
-    return '$resolved?t=$cacheBuster';
+    return '$resolved${separator}t=$cacheBuster';
   }
 
   @override

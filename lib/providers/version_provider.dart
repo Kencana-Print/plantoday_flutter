@@ -463,7 +463,7 @@ class VersionNotifier extends Notifier<VersionState> {
 
     final downloadUrl = state.apkUrl?.isNotEmpty == true
         ? state.apkUrl!
-        : 'http://103.94.238.252:8182/releases/PlanToday-latest.apk';
+        : '${ApiConfig.imageBaseUrl}/releases/PlanToday-latest.apk';
 
     try {
       state = state.copyWith(
@@ -632,7 +632,7 @@ class VersionNotifier extends Notifier<VersionState> {
   Future<void> openInBrowserFallback() async {
     final downloadUrl = state.apkUrl?.isNotEmpty == true
         ? state.apkUrl!
-        : 'http://103.94.238.252:8182/releases/PlanToday-latest.apk';
+        : '${ApiConfig.imageBaseUrl}/releases/PlanToday-latest.apk';
     final uri = Uri.parse(downloadUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
