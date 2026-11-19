@@ -635,6 +635,9 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                     Expanded(
                                       child: TextFormField(
                                         controller: _latitudeController,
+                                        autofillHints: null,
+                                        enableSuggestions: false,
+                                        autocorrect: false,
                                         keyboardType: const TextInputType.numberWithOptions(
                                           decimal: true,
                                           signed: true,
@@ -676,6 +679,9 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                     Expanded(
                                       child: TextFormField(
                                         controller: _longitudeController,
+                                        autofillHints: null,
+                                        enableSuggestions: false,
+                                        autocorrect: false,
                                         keyboardType: const TextInputType.numberWithOptions(
                                           decimal: true,
                                           signed: true,
@@ -865,6 +871,10 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                             const SizedBox(height: 6),
                                             TextFormField(
                                               controller: _noteController,
+                                              autofillHints: null,
+                                              enableSuggestions: false,
+                                              autocorrect: false,
+                                              keyboardType: TextInputType.multiline,
                                               maxLines: 4,
                                               decoration: InputDecoration(
                                                 hintText: 'Tulis keperluan...',
@@ -904,6 +914,10 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                             const SizedBox(height: 6),
                                             TextFormField(
                                               controller: _catatanController,
+                                              autofillHints: null,
+                                              enableSuggestions: false,
+                                              autocorrect: false,
+                                              keyboardType: TextInputType.multiline,
                                               maxLines: 4,
                                               decoration: InputDecoration(
                                                 hintText: 'Tulis hasil kunjungan...',
@@ -942,6 +956,10 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                   const SizedBox(height: 6),
                                   TextFormField(
                                     controller: _noteController,
+                                    autofillHints: null,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    keyboardType: TextInputType.multiline,
                                     maxLines: 3,
                                     decoration: InputDecoration(
                                       hintText: 'Tulis keperluan...',
@@ -976,6 +994,10 @@ class _TambahVisitScreenState extends ConsumerState<TambahVisitScreen> {
                                   const SizedBox(height: 6),
                                   TextFormField(
                                     controller: _catatanController,
+                                    autofillHints: null,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    keyboardType: TextInputType.multiline,
                                     maxLines: 4,
                                     decoration: InputDecoration(
                                       hintText: 'Tulis hasil kunjungan...',

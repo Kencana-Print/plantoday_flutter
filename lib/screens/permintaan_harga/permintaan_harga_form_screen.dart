@@ -721,9 +721,9 @@ class _PermintaanHargaFormScreenState
       if (c != null && c.toString().trim().isNotEmpty) {
         String res = c.toString().trim();
         res = res
+            .replaceFirst(RegExp(r'^https?://[^/]+:8182'), '')
             .replaceFirst(RegExp(r'^https?://103\.94\.238\.252(:\d+)?'), '')
-            .replaceFirst(RegExp(r'^/image/mintaharga'), '/file-gambar/mintaharga')
-            .replaceFirst(RegExp(r'^/images/mintaharga'), '/file-gambar/mintaharga');
+            .replaceFirst(RegExp(r'^/images?/mintaharga'), '/file-gambar/mintaharga');
 
         if (!res.startsWith('http://') && !res.startsWith('https://')) {
           final base = ApiConfig.imageBaseUrl;

@@ -38,11 +38,19 @@ class ApiConfig {
   static String get imageBaseUrl {
     final configured = dotenv.env['IMAGE_BASE_URL'] ??
         const String.fromEnvironment('IMAGE_BASE_URL');
-    if (configured.isNotEmpty) return configured.replaceAll(RegExp(r'/+$'), '');
+    if (configured.isNotEmpty &&
+        !configured.contains(':8182') &&
+        !configured.contains('103.94.238.252')) {
+      return configured.replaceAll(RegExp(r'/+$'), '');
+    }
 
     final readUrl = dotenv.env['IMAGE_READ_URL'] ??
         const String.fromEnvironment('IMAGE_READ_URL');
-    if (readUrl.isNotEmpty) return readUrl.replaceAll(RegExp(r'/+$'), '');
+    if (readUrl.isNotEmpty &&
+        !readUrl.contains(':8182') &&
+        !readUrl.contains('103.94.238.252')) {
+      return readUrl.replaceAll(RegExp(r'/+$'), '');
+    }
 
     // Fallback dinamis: potong suffix '/api' dari baseUrl
     final b = baseUrl.trim();

@@ -258,8 +258,11 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
     final cabang = user?.cabang ?? '-';
     final v = widget.visit;
 
-    final photoUrlResolved = (v.fotoUrl != null && v.fotoUrl!.isNotEmpty)
-        ? (v.fotoUrl!.startsWith('http') ? v.fotoUrl! : '${ApiConfig.imageReadUrl}${v.fotoUrl}')
+    final rawFoto = v.fotoUrl ?? '';
+    final photoUrlResolved = rawFoto.isNotEmpty
+        ? (rawFoto.startsWith('http')
+            ? rawFoto
+            : '${ApiConfig.imageBaseUrl}${rawFoto.startsWith('/') ? '' : '/'}$rawFoto')
         : null;
 
     final hasValidCoord = _latitude != null &&
@@ -561,6 +564,9 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
                                       child: TextFormField(
                                         controller: _latitudeController,
                                         readOnly: isManager,
+                                        autofillHints: null,
+                                        enableSuggestions: false,
+                                        autocorrect: false,
                                         keyboardType: const TextInputType.numberWithOptions(
                                           decimal: true,
                                           signed: true,
@@ -603,6 +609,9 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
                                       child: TextFormField(
                                         controller: _longitudeController,
                                         readOnly: isManager,
+                                        autofillHints: null,
+                                        enableSuggestions: false,
+                                        autocorrect: false,
                                         keyboardType: const TextInputType.numberWithOptions(
                                           decimal: true,
                                           signed: true,
@@ -894,6 +903,10 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
                                 TextFormField(
                                   controller: _noteController,
                                   readOnly: isManager,
+                                  autofillHints: null,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  keyboardType: TextInputType.multiline,
                                   maxLines: 3,
                                   decoration: InputDecoration(
                                     hintText: 'Tulis keperluan...',
@@ -929,6 +942,10 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
                                 TextFormField(
                                   controller: _catatanController,
                                   readOnly: isManager,
+                                  autofillHints: null,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  keyboardType: TextInputType.multiline,
                                   maxLines: 4,
                                   decoration: InputDecoration(
                                     hintText: 'Tulis hasil kunjungan...',
