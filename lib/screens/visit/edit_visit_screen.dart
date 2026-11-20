@@ -13,6 +13,7 @@ import '../../core/utils/responsive_helper.dart';
 import '../../models/visit_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/visit_repository.dart';
+import '../../widgets/web_safe_network_image.dart';
 
 class EditVisitScreen extends ConsumerStatefulWidget {
   final VisitModel visit;
@@ -149,8 +150,8 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
               borderRadius: BorderRadius.circular(16),
               child: localBytes != null
                   ? Image.memory(localBytes, fit: BoxFit.contain)
-                  : Image.network(
-                      networkUrl ?? '',
+                  : WebSafeNetworkImage(
+                      imageUrl: networkUrl ?? '',
                       fit: BoxFit.contain,
                       errorBuilder: (c, e, s) => Container(
                         height: 200,
@@ -259,11 +260,19 @@ class _EditVisitScreenState extends ConsumerState<EditVisitScreen> {
     final v = widget.visit;
 
     final rawFoto = v.fotoUrl ?? '';
-    final photoUrlResolved = rawFoto.isNotEmpty
-        ? (rawFoto.startsWith('http')
-            ? rawFoto
-            : '${ApiConfig.imageBaseUrl}${rawFoto.startsWith('/') ? '' : '/'}$rawFoto')
-        : null;
+    String? photoUrlResolved;
+    if (rawFoto.isNotEmpty) {
+      String cleaned = rawFoto.trim()
+          .replaceFirst(RegExp(r'^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?'), '')
+          .replaceFirst(RegExp(r'^https?://[^/]+:(?:8182|8080|3001|3005)'), '');
+      if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+        photoUrlResolved = cleaned;
+      } else {
+        final base = ApiConfig.imageBaseUrl;
+        final path = cleaned.startsWith('/') ? cleaned : '/$cleaned';
+        photoUrlResolved = base.isNotEmpty ? '$base$path' : path;
+      }
+    }
 
     final hasValidCoord = _latitude != null &&
         _longitude != null &&

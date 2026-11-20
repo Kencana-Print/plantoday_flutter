@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -10,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/visit_repository.dart';
 import '../../widgets/app_date_range_picker_modal.dart';
 import '../../widgets/app_reload_button.dart';
+import '../../widgets/web_safe_network_image.dart';
 
 const _kShortMonths = [
   'Jan',
@@ -534,7 +536,27 @@ class _VisitScreenState extends ConsumerState<VisitScreen> {
     } catch (_) {}
   }
 
+  String _resolvePhotoUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    String url = raw.trim();
+
+    // Jika URL mengarah ke localhost / port internal (misal dari backend tanpa proxy header), bersihkan host-nya
+    url = url
+        .replaceFirst(RegExp(r'^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?'), '')
+        .replaceFirst(RegExp(r'^https?://[^/]+:(?:8182|8080|3001|3005)'), '');
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      final base = ApiConfig.imageBaseUrl;
+      final clean = url.startsWith('/') ? url : '/$url';
+      return base.isNotEmpty ? '$base$clean' : clean;
+    }
+    return url;
+  }
+
   void _showPhotoPreview(String photoUrl) {
+    final resolvedUrl = _resolvePhotoUrl(photoUrl);
+    if (resolvedUrl.isEmpty) return;
+
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -545,18 +567,9 @@ class _VisitScreenState extends ConsumerState<VisitScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                photoUrl,
+              child: WebSafeNetworkImage(
+                imageUrl: resolvedUrl,
                 fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    height: 240,
-                    color: Colors.black26,
-                    alignment: Alignment.center,
-                    child: const CircularProgressIndicator(color: Colors.white),
-                  );
-                },
                 errorBuilder: (context, error, stackTrace) => Container(
                   height: 200,
                   color: Colors.white,
